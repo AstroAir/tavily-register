@@ -1,24 +1,27 @@
 """
-Tavily自动注册模块
+Tavily Traditional Automation Module
+
+Traditional automation approach for Tavily registration.
 """
 import json
 import time
-from playwright.sync_api import sync_playwright
-from config import *
-from utils import generate_email, wait_with_message, save_api_key
+from typing import Any, Optional, Dict, List, cast
+from playwright.sync_api import sync_playwright, Playwright, Browser, Page
+from ..config.settings import *
+from ..utils.helpers import generate_email, wait_with_message, save_api_key
 
 
 class TavilyAutomation:
-    def __init__(self):
-        self.playwright = None
-        self.browser = None
-        self.page = None
-        self.email = None
-        self.password = DEFAULT_PASSWORD
-        self.html_log = []  # 用于记录HTML信息
-        self.email_prefix = None  # 动态邮箱前缀
-        
-    def start_browser(self, headless=None):
+    def __init__(self) -> None:
+        self.playwright: Optional[Playwright] = None
+        self.browser: Optional[Browser] = None
+        self.page: Optional[Page] = None
+        self.email: Optional[str] = None
+        self.password: str = DEFAULT_PASSWORD
+        self.html_log: List[Dict[str, Any]] = []  # 用于记录HTML信息
+        self.email_prefix: Optional[str] = None  # 动态邮箱前缀
+
+    def start_browser(self, headless: Optional[bool] = None) -> None:
         """启动浏览器"""
         self.playwright = sync_playwright().start()
 
@@ -27,9 +30,11 @@ class TavilyAutomation:
 
         # 根据配置选择浏览器类型
         if BROWSER_TYPE == "firefox":
-            self.browser = self.playwright.firefox.launch(headless=headless_mode)
+            self.browser = self.playwright.firefox.launch(
+                headless=headless_mode)
         elif BROWSER_TYPE == "webkit":
-            self.browser = self.playwright.webkit.launch(headless=headless_mode)
+            self.browser = self.playwright.webkit.launch(
+                headless=headless_mode)
         else:  # chromium
             # 配置浏览器启动参数，解决macOS上的兼容性问题
             browser_args = [
@@ -44,10 +49,11 @@ class TavilyAutomation:
                 args=browser_args
             )
 
-        self.page = self.browser.new_page()
-        self.page.set_default_timeout(BROWSER_TIMEOUT)
+        if self.browser:
+            self.page = self.browser.new_page()
+            self.page.set_default_timeout(BROWSER_TIMEOUT)
 
-    def collect_element_info(self, element, action_type, element_name):
+    def collect_element_info(self, element: Any, action_type: str, element_name: str) -> None:
         """收集元素的深层HTML信息"""
         try:
             # 收集当前元素的完整信息
@@ -55,8 +61,8 @@ class TavilyAutomation:
                 'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
                 'action_type': action_type,
                 'element_name': element_name,
-                'page_url': self.page.url,
-                'page_title': self.page.title(),
+                'page_url': self.page.url if self.page else "",
+                'page_title': self.page.title() if self.page else "",
 
                 # 当前元素信息
                 'current_element': self._get_detailed_element_info(element),
@@ -82,17 +88,26 @@ class TavilyAutomation:
 
             self.html_log.append(element_info)
             print(f"📋 收集深层HTML信息: {action_type} - {element_name}")
-            print(f"   标签: {element_info['current_element']['tag_name']}")
-            print(f"   文本: {element_info['current_element']['text_content'][:50]}...")
-            print(f"   稳定属性: {self._get_stable_attributes(element_info['current_element']['attributes'])}")
-            print(f"   父级层次: {len(element_info['parent_hierarchy'])} 层")
+            if isinstance(element_info, dict) and 'current_element' in element_info:
+                current_elem = element_info['current_element']
+                if isinstance(current_elem, dict):
+                    print(f"   标签: {current_elem.get('tag_name', 'N/A')}")
+                    text_content = current_elem.get('text_content', '')
+                    if isinstance(text_content, str):
+                        print(f"   文本: {text_content[:50]}...")
+                    attrs = current_elem.get('attributes', {})
+                    if isinstance(attrs, dict):
+                        print(f"   稳定属性: {self._get_stable_attributes(attrs)}")
+                parent_hierarchy = element_info.get('parent_hierarchy', [])
+                if parent_hierarchy is not None:
+                    print(f"   父级层次: {len(parent_hierarchy)} 层")
 
         except Exception as e:
             print(f"⚠️ 收集HTML信息失败: {e}")
 
-    def _get_detailed_element_info(self, element):
+    def _get_detailed_element_info(self, element: Any) -> Dict[str, Any]:
         """获取元素的详细信息"""
-        return element.evaluate('''el => {
+        result = element.evaluate('''el => {
             const attrs = {};
             for (let attr of el.attributes) {
                 attrs[attr.name] = attr.value;
@@ -123,10 +138,11 @@ class TavilyAutomation:
                 }
             };
         }''')
+        return cast(Dict[str, Any], result)
 
-    def _get_parent_hierarchy(self, element, levels=3):
+    def _get_parent_hierarchy(self, element: Any, levels: int = 3) -> Optional[List[Any]]:
         """获取父级元素层次结构"""
-        return element.evaluate(f'''el => {{
+        result = element.evaluate(f'''el => {{
             const hierarchy = [];
             let current = el.parentElement;
             let level = 0;
@@ -158,10 +174,11 @@ class TavilyAutomation:
 
             return hierarchy;
         }}''')
+        return cast(Optional[List[Any]], result)
 
-    def _get_siblings_info(self, element):
+    def _get_siblings_info(self, element: Any) -> Dict[str, Any]:
         """获取兄弟元素信息"""
-        return element.evaluate('''el => {
+        result = element.evaluate('''el => {
             const parent = el.parentElement;
             if (!parent) return null;
 
@@ -185,10 +202,11 @@ class TavilyAutomation:
                 } : null
             };
         }''')
+        return cast(Dict[str, Any], result)
 
-    def _get_children_info(self, element):
+    def _get_children_info(self, element: Any) -> Dict[str, Any]:
         """获取子元素信息"""
-        return element.evaluate('''el => {
+        result = element.evaluate('''el => {
             const children = Array.from(el.children);
 
             return {
@@ -202,10 +220,11 @@ class TavilyAutomation:
                 } : null
             };
         }''')
+        return cast(Dict[str, Any], result)
 
-    def _get_position_context(self, element):
+    def _get_position_context(self, element: Any) -> Dict[str, Any]:
         """获取位置和上下文信息"""
-        return element.evaluate('''el => {
+        result = element.evaluate('''el => {
             const rect = el.getBoundingClientRect();
 
             return {
@@ -227,10 +246,11 @@ class TavilyAutomation:
                 }
             };
         }''')
+        return cast(Dict[str, Any], result)
 
-    def _get_form_context(self, element):
+    def _get_form_context(self, element: Any) -> Optional[Dict[str, Any]]:
         """获取表单上下文信息"""
-        return element.evaluate('''el => {
+        result = element.evaluate('''el => {
             const form = el.closest('form');
             if (!form) return null;
 
@@ -253,10 +273,11 @@ class TavilyAutomation:
                 }))
             };
         }''')
+        return cast(Optional[Dict[str, Any]], result)
 
-    def _generate_selector_paths(self, element):
+    def _generate_selector_paths(self, element: Any) -> Dict[str, Any]:
         """生成多种选择器路径"""
-        return element.evaluate('''el => {
+        result = element.evaluate('''el => {
             // 生成CSS选择器路径
             function getCSSPath(element) {
                 const path = [];
@@ -327,8 +348,9 @@ class TavilyAutomation:
                 }
             };
         }''')
+        return cast(Dict[str, Any], result)
 
-    def _get_stable_attributes(self, attributes):
+    def _get_stable_attributes(self, attributes: Dict[str, Any]) -> Dict[str, Any]:
         """获取稳定的属性"""
         stable = {}
         for key, value in attributes.items():
@@ -337,7 +359,7 @@ class TavilyAutomation:
                     stable[key] = value
         return stable
 
-    def _get_key_attributes(self, attributes):
+    def _get_key_attributes(self, attributes: Dict[str, Any]) -> Dict[str, Any]:
         """获取关键属性"""
         key_attrs = {}
         for key in ['id', 'class', 'name', 'type', 'placeholder', 'role', 'data-testid']:
@@ -345,7 +367,7 @@ class TavilyAutomation:
                 key_attrs[key] = attributes[key]
         return key_attrs
 
-    def save_html_log(self, filename="tavily_elements_log.json"):
+    def save_html_log(self, filename: str = "tavily_elements_log.json") -> None:
         """保存HTML信息日志"""
         try:
             with open(filename, 'w', encoding='utf-8') as f:
@@ -354,7 +376,7 @@ class TavilyAutomation:
         except Exception as e:
             print(f"❌ 保存HTML信息失败: {e}")
 
-    def close_browser(self):
+    def close_browser(self) -> None:
         """关闭浏览器"""
         if self.page:
             self.page.close()
@@ -362,14 +384,17 @@ class TavilyAutomation:
             self.browser.close()
         if self.playwright:
             self.playwright.stop()
-    
-    def navigate_to_signup(self):
+
+    def navigate_to_signup(self) -> bool:
         """导航到注册页面"""
         try:
             print("🌐 正在访问Tavily主页...")
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
             self.page.goto(TAVILY_HOME_URL)
             wait_with_message(WAIT_TIME_MEDIUM, "等待页面加载")
-            
+
             # 查找并点击Sign Up按钮
             signup_selectors = [
                 'a[href*="sign-up"]',
@@ -380,20 +405,22 @@ class TavilyAutomation:
                 'button:has-text("注册")',
                 'a:has-text("注册")'
             ]
-            
+
             signup_button = None
             for selector in signup_selectors:
                 try:
-                    signup_button = self.page.wait_for_selector(selector, timeout=5000)
+                    signup_button = self.page.wait_for_selector(
+                        selector, timeout=5000)
                     if signup_button:
                         break
                 except:
                     continue
-            
+
             if signup_button:
                 print("✅ 找到Sign Up按钮，正在点击...")
                 # 收集HTML信息
-                self.collect_element_info(signup_button, 'click', 'signup_button')
+                self.collect_element_info(
+                    signup_button, 'click', 'signup_button')
                 signup_button.click()
                 wait_with_message(WAIT_TIME_MEDIUM, "等待注册页面加载")
                 return True
@@ -403,18 +430,22 @@ class TavilyAutomation:
                 self.page.goto(TAVILY_SIGNUP_URL)
                 wait_with_message(WAIT_TIME_MEDIUM, "等待注册页面加载")
                 return True
-                
+
         except Exception as e:
             print(f"❌ 导航到注册页面失败: {e}")
             return False
-    
-    def fill_registration_form(self):
+
+    def fill_registration_form(self) -> bool:
         """填写注册表单"""
         try:
             # 生成随机邮箱（使用动态前缀）
             self.email = generate_email(self.email_prefix)
             print(f"📧 生成的注册邮箱: {self.email}")
-            
+
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
+
             # 查找邮箱输入框
             email_selectors = [
                 'input[type="email"]',
@@ -423,27 +454,28 @@ class TavilyAutomation:
                 '#email',
                 '.email-input'
             ]
-            
+
             email_input = None
             for selector in email_selectors:
                 try:
-                    email_input = self.page.wait_for_selector(selector, timeout=5000)
+                    email_input = self.page.wait_for_selector(
+                        selector, timeout=5000)
                     if email_input:
                         break
                 except:
                     continue
-            
+
             if not email_input:
                 print("❌ 未找到邮箱输入框")
                 return False
-            
+
             # 输入邮箱
             # 收集HTML信息
             self.collect_element_info(email_input, 'fill', 'email_input')
             email_input.fill(self.email)
             print(f"✅ 已输入邮箱: {self.email}")
             wait_with_message(WAIT_TIME_SHORT, "等待输入完成")
-            
+
             # 查找下一步按钮或继续按钮
             next_selectors = [
                 'button:has-text("Next")',
@@ -454,16 +486,17 @@ class TavilyAutomation:
                 '.next-btn',
                 '.continue-btn'
             ]
-            
+
             next_button = None
             for selector in next_selectors:
                 try:
-                    next_button = self.page.wait_for_selector(selector, timeout=5000)
+                    next_button = self.page.wait_for_selector(
+                        selector, timeout=5000)
                     if next_button:
                         break
                 except:
                     continue
-            
+
             if next_button:
                 print("✅ 找到下一步按钮，正在点击...")
                 # 收集HTML信息
@@ -474,18 +507,22 @@ class TavilyAutomation:
                 print("⚠️ 未找到下一步按钮，尝试按Enter键...")
                 email_input.press('Enter')
                 wait_with_message(WAIT_TIME_MEDIUM, "等待密码页面加载")
-            
+
             return True
-            
+
         except Exception as e:
             print(f"❌ 填写邮箱失败: {e}")
             return False
-    
-    def fill_password(self):
+
+    def fill_password(self) -> bool:
         """填写密码"""
         try:
             print("🔐 正在填写密码...")
-            
+
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
+
             # 查找密码输入框
             password_selectors = [
                 'input[type="password"]',
@@ -494,27 +531,28 @@ class TavilyAutomation:
                 '#password',
                 '.password-input'
             ]
-            
+
             password_input = None
             for selector in password_selectors:
                 try:
-                    password_input = self.page.wait_for_selector(selector, timeout=10000)
+                    password_input = self.page.wait_for_selector(
+                        selector, timeout=10000)
                     if password_input:
                         break
                 except:
                     continue
-            
+
             if not password_input:
                 print("❌ 未找到密码输入框")
                 return False
-            
+
             # 输入密码
             # 收集HTML信息
             self.collect_element_info(password_input, 'fill', 'password_input')
             password_input.fill(self.password)
             print(f"✅ 已输入密码")
             # 密码输入后立即继续，不需要等待
-            
+
             # 查找确认密码输入框（如果有的话）
             confirm_password_selectors = [
                 'input[name="confirmPassword"]',
@@ -523,17 +561,18 @@ class TavilyAutomation:
                 '#confirmPassword',
                 '#confirm_password'
             ]
-            
+
             for selector in confirm_password_selectors:
                 try:
-                    confirm_input = self.page.wait_for_selector(selector, timeout=3000)
+                    confirm_input = self.page.wait_for_selector(
+                        selector, timeout=3000)
                     if confirm_input:
                         confirm_input.fill(self.password)
                         print("✅ 已输入确认密码")
                         break
                 except:
                     continue
-            
+
             # 查找提交按钮（减少等待时间）
             submit_selectors = [
                 'button:has-text("Sign Up")',
@@ -549,37 +588,42 @@ class TavilyAutomation:
             submit_button = None
             for selector in submit_selectors:
                 try:
-                    submit_button = self.page.wait_for_selector(selector, timeout=2000)  # 减少到2秒
+                    submit_button = self.page.wait_for_selector(
+                        selector, timeout=2000)  # 减少到2秒
                     if submit_button:
                         print(f"✅ 找到提交按钮: {selector}")
                         break
                 except:
                     continue
-            
+
             if submit_button:
                 print("✅ 找到注册按钮，正在提交...")
                 # 收集HTML信息
-                self.collect_element_info(submit_button, 'click', 'submit_button')
+                self.collect_element_info(
+                    submit_button, 'click', 'submit_button')
                 submit_button.click()
                 wait_with_message(WAIT_TIME_LONG, "等待注册完成")
             else:
                 print("⚠️ 未找到注册按钮，尝试按Enter键...")
                 password_input.press('Enter')
                 wait_with_message(WAIT_TIME_LONG, "等待注册完成")
-            
+
             return True
-            
+
         except Exception as e:
             print(f"❌ 填写密码失败: {e}")
             return False
-    
-    def verify_email(self, verification_link):
+
+    def verify_email(self, verification_link: str) -> bool:
         """验证邮箱"""
         try:
             print(f"🔗 正在访问验证链接...")
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
             self.page.goto(verification_link)
             wait_with_message(WAIT_TIME_LONG, "等待邮箱验证完成")
-            
+
             # 检查是否验证成功
             success_indicators = [
                 'text=verified',
@@ -589,7 +633,7 @@ class TavilyAutomation:
                 '.success',
                 '.verified'
             ]
-            
+
             for indicator in success_indicators:
                 try:
                     if self.page.wait_for_selector(indicator, timeout=5000):
@@ -597,22 +641,26 @@ class TavilyAutomation:
                         return True
                 except:
                     continue
-            
+
             print("✅ 邮箱验证完成（未找到明确的成功指示器，但页面已加载）")
             return True
-            
+
         except Exception as e:
             print(f"❌ 邮箱验证失败: {e}")
             return False
-    
-    def get_api_key(self):
+
+    def get_api_key(self) -> Optional[str]:
         """获取API key"""
         try:
             print("🔑 正在查找API key...")
-            
+
+            if not self.page:
+                print("❌ 页面未初始化")
+                return None
+
             # 等待页面完全加载
             wait_with_message(WAIT_TIME_MEDIUM, "等待页面加载")
-            
+
             # 尝试导航到API设置页面
             api_page_selectors = [
                 'a[href*="api"]',
@@ -623,10 +671,11 @@ class TavilyAutomation:
                 '.api-key',
                 '.settings'
             ]
-            
+
             for selector in api_page_selectors:
                 try:
-                    api_link = self.page.wait_for_selector(selector, timeout=3000)
+                    api_link = self.page.wait_for_selector(
+                        selector, timeout=3000)
                     if api_link:
                         print(f"✅ 找到API相关链接，正在点击...")
                         api_link.click()
@@ -634,7 +683,7 @@ class TavilyAutomation:
                         break
                 except:
                     continue
-            
+
             # 查找API key
             api_key_selectors = [
                 'input[value*="tvly-"]',
@@ -644,7 +693,7 @@ class TavilyAutomation:
                 '[data-testid*="api"]',
                 'input[readonly]'
             ]
-            
+
             api_key = None
             for selector in api_key_selectors:
                 try:
@@ -658,18 +707,20 @@ class TavilyAutomation:
                         break
                 except:
                     continue
-            
+
             if api_key:
                 print(f"✅ 成功获取API key: {api_key}")
-                save_api_key(self.email, api_key, self.password)
+                if self.email:
+                    save_api_key(self.email, api_key, self.password)
                 return api_key
             else:
                 print("⚠️ 未找到API key，可能需要手动查找")
                 # 截图保存当前页面状态
-                self.page.screenshot(path="api_key_page.png")
-                print("📸 已截图保存当前页面: api_key_page.png")
+                if self.page:
+                    self.page.screenshot(path="api_key_page.png")
+                    print("📸 已截图保存当前页面: api_key_page.png")
                 return None
-                
+
         except Exception as e:
             print(f"❌ 获取API key失败: {e}")
             return None

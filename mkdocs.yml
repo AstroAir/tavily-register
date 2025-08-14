@@ -1,0 +1,243 @@
+# MkDocs Configuration for Tavily Register Documentation
+site_name: Tavily Register Documentation
+site_description: Comprehensive documentation for the Tavily Register automation tool
+site_author: Tavily Register Team
+site_url: https://yatotm.github.io/tavily-register
+
+# Repository
+repo_name: yatotm/tavily-register
+repo_url: https://github.com/yatotm/tavily-register
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2024 Tavily Register Team
+
+# Configuration
+theme:
+  name: material
+  custom_dir: docs/overrides
+  language: en
+  
+  # Color scheme
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  # Features
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.tabs.link
+    - content.tooltips
+    - header.autohide
+    - navigation.expand
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.prune
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+    - toc.integrate
+
+  # Favicon and logo
+  favicon: assets/images/favicon.png
+  logo: assets/images/logo.png
+
+  # Font
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+# Plugins
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - minify:
+      minify_html: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+  - git-authors
+  - awesome-pages
+  - macros
+  - include-markdown
+  - glightbox
+  - mermaid2:
+      arguments:
+        theme: |
+          ^(JSON.parse(__md_get("__palette").index == 1)) ?
+          'dark' : 'light'
+  - redirects:
+      redirect_maps:
+        'index.md': 'getting-started/index.md'
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: zh
+          name: 中文
+          build: true
+          nav_translations:
+            Home: 首页
+            Getting Started: 快速开始
+            Installation: 安装指南
+            Configuration: 配置
+            Usage: 使用指南
+            API Reference: API 参考
+            Examples: 示例
+            Troubleshooting: 故障排除
+            Contributing: 贡献指南
+            Changelog: 更新日志
+
+# Customization
+extra:
+  version:
+    provider: mike
+    default: stable
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/yatotm/tavily-register
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/tavily-register/
+  analytics:
+    provider: google
+    property: !ENV GOOGLE_ANALYTICS_KEY
+  consent:
+    title: Cookie consent
+    description: >- 
+      We use cookies to recognize your repeated visits and preferences, as well
+      as to measure the effectiveness of our documentation and whether users
+      find what they're searching for. With your consent, you're helping us to
+      make our documentation better.
+
+# Extensions
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      normalize_issue_symbols: true
+      repo_url_shorthand: true
+      user: yatotm
+      repo: tavily-register
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - includes/mkdocs.md
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# Navigation
+nav:
+  - Home: index.md
+  - Getting Started:
+    - getting-started/index.md
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+    - Configuration: getting-started/configuration.md
+  - User Guide:
+    - user-guide/index.md
+    - Basic Usage: user-guide/basic-usage.md
+    - Advanced Features: user-guide/advanced-features.md
+    - Email Integration: user-guide/email-integration.md
+    - Browser Configuration: user-guide/browser-configuration.md
+  - API Reference:
+    - api/index.md
+    - Core Modules: api/core.md
+    - Email Modules: api/email.md
+    - Configuration: api/configuration.md
+    - Utilities: api/utilities.md
+  - Examples:
+    - examples/index.md
+    - Basic Examples: examples/basic.md
+    - Advanced Examples: examples/advanced.md
+    - Custom Configurations: examples/configurations.md
+  - Troubleshooting:
+    - troubleshooting/index.md
+    - Common Issues: troubleshooting/common-issues.md
+    - Error Messages: troubleshooting/error-messages.md
+    - Performance Tips: troubleshooting/performance.md
+  - Development:
+    - development/index.md
+    - Contributing: development/contributing.md
+    - Testing: development/testing.md
+    - Release Process: development/release-process.md
+  - Changelog: changelog.md
+
+# Additional CSS and JavaScript
+extra_css:
+  - assets/stylesheets/extra.css
+  - assets/stylesheets/custom.css
+
+extra_javascript:
+  - assets/javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+  - assets/javascripts/custom.js

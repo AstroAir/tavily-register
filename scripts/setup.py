@@ -36,15 +36,15 @@ def check_python_version():
 def install_dependencies():
     """安装Python依赖"""
     print("\n📦 安装Python依赖...")
-    
+
     # 升级pip
     if not run_command(f"{sys.executable} -m pip install --upgrade pip", "升级pip"):
         return False
-    
-    # 安装依赖包
-    if not run_command(f"{sys.executable} -m pip install -r requirements.txt", "安装依赖包"):
+
+    # 安装项目及其依赖
+    if not run_command(f"{sys.executable} -m pip install -e .", "安装项目及依赖"):
         return False
-    
+
     return True
 
 def install_playwright():
@@ -87,10 +87,10 @@ def run_basic_test():
 
     # 检查主要模块是否可以导入
     try:
-        import intelligent_tavily_automation
-        import email_checker
-        import config
-        import utils
+        from src.tavily_register.core.intelligent_automation import IntelligentTavilyAutomation
+        from src.tavily_register.email.checker import EmailChecker
+        from src.tavily_register.config.settings import EMAIL_DOMAIN
+        from src.tavily_register.utils.helpers import generate_email
         print("✅ 所有核心模块导入成功")
         return True
     except ImportError as e:

@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 """
-邮箱验证邮件检查器
-专门用于检查2925.com邮箱中的验证邮件
+Email Verification Checker
+
+Specialized tool for checking verification emails in 2925.com mailbox.
 """
 import re
 import time
-from playwright.sync_api import sync_playwright
-from config import *
-from utils import load_cookies, wait_with_message
+from typing import Optional, List, Dict, Any
+from playwright.sync_api import sync_playwright, Page, Browser, Playwright
+from ..config.settings import *
+from ..utils.helpers import load_cookies, wait_with_message
 
 
 class EmailChecker:
-    def __init__(self):
-        self.playwright = None
-        self.browser = None
-        self.page = None
-        
-    def start_browser(self, headless=None):
+    def __init__(self) -> None:
+        self.playwright: Optional[Playwright] = None
+        self.browser: Optional[Browser] = None
+        self.page: Optional[Page] = None
+
+    def start_browser(self, headless: Optional[bool] = None) -> None:
         """启动浏览器"""
         self.playwright = sync_playwright().start()
 
@@ -25,9 +27,11 @@ class EmailChecker:
 
         # 根据配置选择浏览器类型
         if BROWSER_TYPE == "firefox":
-            self.browser = self.playwright.firefox.launch(headless=headless_mode)
+            self.browser = self.playwright.firefox.launch(
+                headless=headless_mode)
         elif BROWSER_TYPE == "webkit":
-            self.browser = self.playwright.webkit.launch(headless=headless_mode)
+            self.browser = self.playwright.webkit.launch(
+                headless=headless_mode)
         else:  # chromium
             browser_args = [
                 '--no-sandbox',
@@ -40,14 +44,14 @@ class EmailChecker:
                 headless=headless_mode,
                 args=browser_args
             )
-        
+
         self.page = self.browser.new_page()
         self.page.set_default_timeout(BROWSER_TIMEOUT)
 
         # 设置弹窗处理
         self.page.on("dialog", self.handle_dialog)
 
-    def handle_dialog(self, dialog):
+    def handle_dialog(self, dialog: Any) -> None:
         """处理弹窗"""
         try:
             print(f"🔔 检测到弹窗: {dialog.message}")
@@ -64,7 +68,7 @@ class EmailChecker:
             except:
                 pass
 
-    def close_browser(self):
+    def close_browser(self) -> None:
         """关闭浏览器"""
         if self.page:
             self.page.close()
@@ -72,12 +76,19 @@ class EmailChecker:
             self.browser.close()
         if self.playwright:
             self.playwright.stop()
-    
-    def load_email_page(self):
+
+    def load_email_page(self) -> bool:
         """加载邮箱页面"""
         try:
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
+
             # 先访问主域名
             print("🌐 访问主域名...")
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
             self.page.goto("https://www.2925.com")
             wait_with_message(1, "等待主域名加载")
 
@@ -111,14 +122,17 @@ class EmailChecker:
         except Exception as e:
             print(f"❌ 加载邮箱页面失败: {e}")
             return False
-    
-    def find_emails_on_page(self):
+
+    def find_emails_on_page(self) -> List[Dict[str, Any]]:
         """在当前页面查找邮件"""
         try:
             # 等待邮件列表加载
             wait_with_message(2, "等待邮件列表加载")
 
             # 查找邮件行
+            if not self.page:
+                print("❌ 页面未初始化")
+                return []
             email_rows = self.page.query_selector_all('tbody tr')
 
             if not email_rows:
@@ -140,16 +154,19 @@ class EmailChecker:
                     is_unread = False
 
                     # 查找SVG未读图标
-                    svg_elements = row.query_selector_all('svg.svg-common.icon-svg-small')
+                    svg_elements = row.query_selector_all(
+                        'svg.svg-common.icon-svg-small')
                     for svg in svg_elements:
                         try:
                             # 查找use元素
                             use_element = svg.query_selector('use')
                             if use_element:
-                                xlink_href = use_element.get_attribute('xlink:href')
+                                xlink_href = use_element.get_attribute(
+                                    'xlink:href')
                                 if xlink_href == '#unread_mail':
                                     is_unread = True
-                                    print(f"🔍 在第{i+1}个邮件中找到未读标识: xlink:href='{xlink_href}'")
+                                    print(
+                                        f"🔍 在第{i+1}个邮件中找到未读标识: xlink:href='{xlink_href}'")
                                     break
                         except:
                             continue
@@ -157,10 +174,12 @@ class EmailChecker:
                     # 备用检测方法
                     if not is_unread:
                         # 检查是否有包含unread_mail的use元素
-                        use_elements = row.query_selector_all('use[xlink\\:href="#unread_mail"]')
+                        use_elements = row.query_selector_all(
+                            'use[xlink\\:href="#unread_mail"]')
                         if use_elements:
                             is_unread = True
-                            print(f"🔍 在第{i+1}个邮件中找到未读标识: use[xlink:href='#unread_mail']")
+                            print(
+                                f"🔍 在第{i+1}个邮件中找到未读标识: use[xlink:href='#unread_mail']")
 
                     # 也可以通过样式类判断
                     if not is_unread:
@@ -185,15 +204,16 @@ class EmailChecker:
         except Exception as e:
             print(f"❌ 查找邮件失败: {e}")
             return []
-    
-    def check_for_tavily_email(self, target_email, max_retries=10, wait_interval=30):
+
+    def check_for_tavily_email(self, target_email: str, max_retries: int = 10, wait_interval: int = 30) -> Optional[str]:
         """检查Tavily验证邮件（支持等待新邮件和别名验证）"""
         try:
             print(f"📧 开始检查验证邮件，目标邮箱: {target_email}")
             print(f"⏳ 最大重试次数: {max_retries}, 等待间隔: {wait_interval}秒")
 
             # 提取目标邮箱的别名部分
-            target_alias = target_email.split('@')[0] if '@' in target_email else target_email
+            target_alias = target_email.split(
+                '@')[0] if '@' in target_email else target_email
             print(f"🎯 目标别名: {target_alias}")
 
             for retry in range(max_retries):
@@ -224,22 +244,27 @@ class EmailChecker:
 
                     # 检查是否是Tavily验证邮件
                     is_tavily = 'tavily' in text
-                    is_verify = any(keyword in text for keyword in ['verify your email', 'verify', 'verification'])
+                    is_verify = any(keyword in text for keyword in [
+                                    'verify your email', 'verify', 'verification'])
 
                     if is_tavily and is_verify:
                         if email_info['is_unread']:
                             unread_tavily_emails.append(email_info)
-                            print(f"✅ 找到未读Tavily验证邮件! (第{email_info['index']+1}个)")
+                            print(
+                                f"✅ 找到未读Tavily验证邮件! (第{email_info['index']+1}个)")
                         else:
                             read_tavily_emails.append(email_info)
-                            print(f"📖 找到已读Tavily验证邮件 (第{email_info['index']+1}个)")
+                            print(
+                                f"📖 找到已读Tavily验证邮件 (第{email_info['index']+1}个)")
 
                 # 如果有未读邮件，只处理第一个未读邮件
                 if unread_tavily_emails:
-                    print(f"🎯 找到 {len(unread_tavily_emails)} 个未读Tavily验证邮件，处理第一个")
+                    print(
+                        f"🎯 找到 {len(unread_tavily_emails)} 个未读Tavily验证邮件，处理第一个")
 
                     first_unread_email = unread_tavily_emails[0]
-                    verification_link = self.process_email_with_alias_check(first_unread_email, target_alias)
+                    verification_link = self.process_email_with_alias_check(
+                        first_unread_email, target_alias)
                     if verification_link:
                         return verification_link
 
@@ -266,7 +291,8 @@ class EmailChecker:
                     print(f"⚠️ 多次重试后仍无未读邮件，尝试处理已读邮件...")
 
                     for email_info in read_tavily_emails:
-                        verification_link = self.process_email_with_alias_check(email_info, target_alias)
+                        verification_link = self.process_email_with_alias_check(
+                            email_info, target_alias)
                         if verification_link:
                             return verification_link
 
@@ -283,11 +309,14 @@ class EmailChecker:
             print(f"❌ 检查验证邮件失败: {e}")
             return None
 
-    def refresh_email_list(self):
+    def refresh_email_list(self) -> None:
         """刷新邮件列表"""
         try:
             print("🔄 刷新邮件列表...")
             # 刷新页面
+            if not self.page:
+                print("❌ 页面未初始化")
+                return
             self.page.reload()
             wait_with_message(3, "等待页面重新加载")
 
@@ -317,14 +346,49 @@ class EmailChecker:
         except Exception as e:
             print(f"⚠️ 刷新邮件列表失败: {e}")
 
-    def process_email_with_alias_check(self, email_info, target_alias):
+    def return_to_email_list(self) -> None:
+        """返回邮件列表页面"""
+        try:
+            if not self.page:
+                print("❌ 页面未初始化")
+                return
+
+            # 尝试点击返回按钮
+            back_selectors = [
+                'button[aria-label="返回"]',
+                'button:has-text("返回")',
+                'button:has-text("Back")',
+                '.back-button',
+                '[data-testid="back"]'
+            ]
+
+            for selector in back_selectors:
+                try:
+                    back_button = self.page.query_selector(selector)
+                    if back_button:
+                        print(f"✅ 找到返回按钮: {selector}")
+                        back_button.click()
+                        wait_with_message(2, "等待返回邮件列表")
+                        return
+                except:
+                    continue
+
+            # 如果没有找到返回按钮，尝试使用浏览器的后退功能
+            print("🔙 使用浏览器后退功能返回邮件列表")
+            self.page.go_back()
+            wait_with_message(2, "等待页面加载")
+
+        except Exception as e:
+            print(f"⚠️ 返回邮件列表失败: {e}")
+
+    def process_email_with_alias_check(self, email_info: dict, target_alias: str) -> Optional[str]:
         """处理邮件并验证别名"""
         try:
             original_text = email_info['text']
             status = "未读" if email_info['is_unread'] else "已读"
-
+ 
             print(f"📧 处理{status}邮件: {original_text[:100]}...")
-
+ 
             # 首先尝试从预览文本中直接提取验证链接
             verification_link = self.extract_link_from_text(original_text)
             if verification_link:
@@ -335,19 +399,19 @@ class EmailChecker:
                 else:
                     print("⚠️ 预览文本别名不匹配，跳过此邮件")
                     return None
-
+ 
             # 如果预览文本中没有找到，点击邮件获取完整内容
             try:
                 print("🔍 点击邮件获取完整内容...")
                 email_info['element'].click()
                 wait_with_message(3, "等待邮件打开")
-
+ 
                 # 验证邮件别名
                 if not self.verify_email_alias_in_detail(target_alias):
                     print(f"❌ 邮件别名不匹配目标别名 {target_alias}，返回邮件列表")
                     self.return_to_email_list()
                     return None
-
+ 
                 # 别名匹配，提取验证链接
                 verification_link = self.extract_verification_link()
                 if verification_link:
@@ -357,16 +421,16 @@ class EmailChecker:
                     print("⚠️ 未在邮件详情中找到验证链接")
                     self.return_to_email_list()
                     return None
-
+ 
             except Exception as e:
                 print(f"⚠️ 点击邮件失败: {e}")
                 return None
-
+ 
         except Exception as e:
             print(f"❌ 处理邮件失败: {e}")
             return None
 
-    def verify_email_alias_from_preview(self, email_info, target_alias):
+    def verify_email_alias_from_preview(self, email_info: dict, target_alias: str) -> bool:
         """从预览信息验证邮件别名（简单检查）"""
         try:
             # 在预览文本中查找目标别名
@@ -381,7 +445,7 @@ class EmailChecker:
             print(f"⚠️ 验证预览别名失败: {e}")
             return False
 
-    def verify_email_alias_in_detail(self, target_alias):
+    def verify_email_alias_in_detail(self, target_alias: str) -> bool:
         """在邮件详情页面验证别名"""
         try:
             print(f"🔍 验证邮件别名是否为: {target_alias}")
@@ -397,6 +461,9 @@ class EmailChecker:
 
             for selector in alias_selectors:
                 try:
+                    if not self.page:
+                        print("❌ 页面未初始化")
+                        return False
                     alias_elements = self.page.query_selector_all(selector)
                     for element in alias_elements:
                         alias_text = element.inner_text().strip()
@@ -414,6 +481,9 @@ class EmailChecker:
 
             # 如果没有找到专门的别名元素，在整个页面中搜索
             print("🔍 在整个页面中搜索目标别名...")
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
             page_content = self.page.content()
             if target_alias in page_content:
                 print(f"✅ 在页面内容中找到目标别名: {target_alias}")
@@ -426,43 +496,7 @@ class EmailChecker:
             print(f"❌ 验证邮件别名失败: {e}")
             return False
 
-    def return_to_email_list(self):
-        """返回邮件列表页面"""
-        try:
-            print("🔙 返回邮件列表...")
-
-            # 尝试多种返回方式
-            back_selectors = [
-                'button:has-text("返回")',
-                'button:has-text("Back")',
-                '.back-btn',
-                '[data-testid="back"]',
-                'button[title*="back" i]',
-                'button[title*="返回" i]'
-            ]
-
-            for selector in back_selectors:
-                try:
-                    back_btn = self.page.query_selector(selector)
-                    if back_btn:
-                        print(f"✅ 找到返回按钮: {selector}")
-                        back_btn.click()
-                        wait_with_message(2, "等待返回邮件列表")
-                        return True
-                except:
-                    continue
-
-            # 如果没有找到返回按钮，直接导航到邮件列表页面
-            print("⚠️ 未找到返回按钮，直接导航到邮件列表页面")
-            self.page.goto("https://www.2925.com/#/mailList")
-            wait_with_message(3, "等待邮件列表页面加载")
-            return True
-
-        except Exception as e:
-            print(f"❌ 返回邮件列表失败: {e}")
-            return False
-
-    def quick_refresh_mode(self, target_alias, max_refresh_time=60, refresh_interval=10):
+    def quick_refresh_mode(self, target_alias: str, max_refresh_time: int = 60, refresh_interval: int = 10) -> Optional[str]:
         """快速刷新模式：每10秒刷新一次，检查第一个未读Tavily邮件"""
         try:
             print(f"🔄 进入快速刷新模式")
@@ -476,7 +510,8 @@ class EmailChecker:
                 refresh_count += 1
                 elapsed_time = time.time() - start_time
 
-                print(f"\n🔄 快速刷新 {refresh_count}/{max_refreshes} (已用时 {elapsed_time:.0f}秒)")
+                print(
+                    f"\n🔄 快速刷新 {refresh_count}/{max_refreshes} (已用时 {elapsed_time:.0f}秒)")
 
                 # 使用智能等待替代固定等待
                 print("👀 启用智能监控新邮件提示...")
@@ -499,7 +534,8 @@ class EmailChecker:
                 text = first_email['text'].lower()
 
                 is_tavily = 'tavily' in text
-                is_verify = any(keyword in text for keyword in ['verify your email', 'verify', 'verification'])
+                is_verify = any(keyword in text for keyword in [
+                                'verify your email', 'verify', 'verification'])
                 is_unread = first_email['is_unread']
 
                 if is_tavily and is_verify and is_unread:
@@ -507,7 +543,8 @@ class EmailChecker:
                     print(f"📧 邮件内容: {first_email['text'][:100]}...")
 
                     # 处理这个邮件
-                    verification_link = self.process_email_with_alias_check(first_email, target_alias)
+                    verification_link = self.process_email_with_alias_check(
+                        first_email, target_alias)
                     if verification_link:
                         print(f"🎉 快速刷新模式成功找到匹配邮件!")
                         return verification_link
@@ -532,7 +569,7 @@ class EmailChecker:
             print(f"❌ 快速刷新模式失败: {e}")
             return None
 
-    def monitor_new_email_notification(self, max_wait_time=60):
+    def monitor_new_email_notification(self, max_wait_time: int = 60) -> bool:
         """监控新邮件提示浮动元素"""
         try:
             print(f"👀 开始监控新邮件提示，最大等待时间: {max_wait_time}秒")
@@ -551,16 +588,21 @@ class EmailChecker:
                 # 检查新邮件提示
                 for selector in notification_selectors:
                     try:
+                        if not self.page:
+                            print("❌ 页面未初始化")
+                            return False
                         notification = self.page.query_selector(selector)
                         if notification:
                             # 检查是否包含新邮件信息
                             notification_text = notification.inner_text().lower()
                             if '新邮件' in notification_text or 'unread' in notification_text:
-                                print(f"🎉 检测到新邮件提示: {notification_text[:50]}...")
+                                print(
+                                    f"🎉 检测到新邮件提示: {notification_text[:50]}...")
 
                                 # 点击关闭提示（如果有关闭按钮）
                                 try:
-                                    close_btn = notification.query_selector('.notice-close, [class*="close"]')
+                                    close_btn = notification.query_selector(
+                                        '.notice-close, [class*="close"]')
                                     if close_btn:
                                         close_btn.click()
                                         print("✅ 已关闭新邮件提示")
@@ -581,7 +623,7 @@ class EmailChecker:
             print(f"❌ 监控新邮件提示失败: {e}")
             return False
 
-    def smart_wait_for_new_email(self, target_alias):
+    def smart_wait_for_new_email(self, target_alias: str) -> bool:
         """智能等待新邮件（优先监控提示，备用定时刷新）"""
         try:
             print("🧠 启动智能新邮件等待模式")
@@ -592,7 +634,8 @@ class EmailChecker:
                 for email_info in emails:
                     text = email_info['text'].lower()
                     is_tavily = 'tavily' in text
-                    is_verify = any(keyword in text for keyword in ['verify your email', 'verify', 'verification'])
+                    is_verify = any(keyword in text for keyword in [
+                                    'verify your email', 'verify', 'verification'])
                     is_unread = email_info['is_unread']
 
                     if is_tavily and is_verify and is_unread:
@@ -614,8 +657,8 @@ class EmailChecker:
         except Exception as e:
             print(f"❌ 智能等待新邮件失败: {e}")
             return False
-    
-    def extract_verification_link(self):
+
+    def extract_verification_link(self) -> Optional[str]:
         """从邮件内容中提取验证链接"""
         try:
             wait_with_message(2, "等待邮件内容加载")
@@ -623,6 +666,9 @@ class EmailChecker:
             print("🔍 开始查找验证链接...")
 
             # 方法1: 查找所有链接元素
+            if not self.page:
+                print("❌ 页面未初始化")
+                return None
             links = self.page.query_selector_all('a')
             print(f"📋 找到 {len(links)} 个链接元素")
 
@@ -636,16 +682,20 @@ class EmailChecker:
                     if href and 'tavily.com' in href.lower():
                         if any(keyword in href.lower() for keyword in ['verify', 'confirm', 'activate', 'email-verification']):
                             print(f"✅ 找到Tavily验证链接: {href}")
-                            return href
+                            return str(href)
                         elif any(keyword in text.lower() for keyword in ['verify', 'confirm', 'activate', '验证']):
                             print(f"✅ 找到验证按钮链接: {href}")
-                            return href
+                            return str(href)
                 except Exception as e:
                     print(f"  处理链接{i+1}时出错: {e}")
                     continue
 
             # 方法2: 查找按钮元素
-            buttons = self.page.query_selector_all('button, input[type="button"], input[type="submit"]')
+            if not self.page:
+                print("❌ 页面未初始化")
+                return None
+            buttons = self.page.query_selector_all(
+                'button, input[type="button"], input[type="submit"]')
             print(f"📋 找到 {len(buttons)} 个按钮元素")
 
             for i, button in enumerate(buttons):
@@ -660,18 +710,23 @@ class EmailChecker:
                         import re
                         url_match = re.search(r'https://[^\'"]+', onclick)
                         if url_match:
-                            link = url_match.group(0)
-                            print(f"✅ 从按钮onclick中提取到验证链接: {link}")
-                            return link
+                            verification_url = str(url_match.group(0))
+                            print(f"✅ 从按钮onclick中提取到验证链接: {verification_url}")
+                            return verification_url
                 except Exception as e:
                     print(f"  处理按钮{i+1}时出错: {e}")
                     continue
+
+            if not self.page:
+                print("❌ 页面未初始化")
+                return None
 
             # 方法3: 从页面文本中提取
             print("🔍 尝试从页面文本中提取链接...")
             page_content = self.page.inner_text('body')
 
             # 使用更精确的正则表达式
+            import re
             patterns = [
                 r'https://auth\.tavily\.com/u/email-verification\?ticket=[^\s<>"\']+',
                 r'https://[^\s<>"\']*tavily\.com[^\s<>"\']*verify[^\s<>"\']*',
@@ -681,9 +736,9 @@ class EmailChecker:
             for pattern in patterns:
                 matches = re.findall(pattern, page_content, re.IGNORECASE)
                 if matches:
-                    link = matches[0].rstrip('#')  # 移除末尾的#
-                    print(f"✅ 从页面文本中提取到验证链接: {link}")
-                    return link
+                    verification_url = str(matches[0].rstrip('#'))  # 移除末尾的#
+                    print(f"✅ 从页面文本中提取到验证链接: {verification_url}")
+                    return verification_url
 
             print("⚠️ 未找到验证链接")
             print(f"📄 页面内容预览: {page_content[:500]}...")
@@ -693,10 +748,11 @@ class EmailChecker:
             print(f"❌ 提取验证链接失败: {e}")
             return None
 
-    def extract_link_from_text(self, text):
+    def extract_link_from_text(self, text: str) -> Optional[str]:
         """从文本中提取验证链接"""
         try:
             # 使用正则表达式查找Tavily验证链接
+            import re
             patterns = [
                 r'https://auth\.tavily\.com/u/email-verification\?ticket=[^\s<>"\'#]+',
                 r'https://[^\s<>"\']*tavily[^\s<>"\']*verify[^\s<>"\']*',
@@ -708,7 +764,7 @@ class EmailChecker:
                 matches = re.findall(pattern, text, re.IGNORECASE)
                 if matches:
                     # 返回第一个匹配的链接
-                    link = matches[0].rstrip('#')  # 移除末尾的#
+                    link = str(matches[0].rstrip('#'))  # 移除末尾的#
                     return link
 
             return None
@@ -717,7 +773,7 @@ class EmailChecker:
             print(f"❌ 从文本提取链接失败: {e}")
             return None
 
-    def navigate_to_verification_link(self, verification_link):
+    def navigate_to_verification_link(self, verification_link: str) -> Any:
         """导航到验证链接并处理弹窗"""
         try:
             print(f"🔗 正在访问验证链接: {verification_link}")
@@ -725,7 +781,7 @@ class EmailChecker:
             # 设置页面事件监听
             popup_handled = False
 
-            def handle_popup(dialog):
+            def handle_popup(dialog: Any) -> None:
                 nonlocal popup_handled
                 try:
                     print(f"🔔 检测到弹窗: {dialog.message}")
@@ -744,7 +800,11 @@ class EmailChecker:
                         pass
 
             # 监听弹窗
-            self.page.on("dialog", handle_popup)
+            if self.page is not None:
+                self.page.on("dialog", handle_popup)
+            else:
+                print("❌ 页面未初始化")
+                return False
 
             # 访问验证链接
             self.page.goto(verification_link)
@@ -758,7 +818,7 @@ class EmailChecker:
                 # 检查是否是登录页面
                 if "login" in current_url.lower():
                     print("🔑 检测到Tavily登录页面，需要进行登录")
-                    return "login_required"
+                    return str("login_required")
                 else:
                     print("✅ 邮箱验证可能已完成")
                     return True
@@ -771,7 +831,7 @@ class EmailChecker:
             print(f"❌ 访问验证链接失败: {e}")
             return False
 
-    def login_to_tavily(self, email, password):
+    def login_to_tavily(self, email: str, password: str) -> bool:
         """登录到Tavily账户（支持分步登录）"""
         try:
             print(f"🔑 开始登录Tavily账户: {email}")
@@ -802,7 +862,7 @@ class EmailChecker:
             print(f"❌ 登录Tavily失败: {e}")
             return False
 
-    def _input_email_step(self, email):
+    def _input_email_step(self, email: str) -> bool:
         """输入邮箱步骤"""
         email_selectors = [
             'input[name="username"]',  # Tavily使用username字段
@@ -818,10 +878,12 @@ class EmailChecker:
         email_input = None
         for selector in email_selectors:
             try:
-                email_input = self.page.wait_for_selector(selector, timeout=5000)
-                if email_input:
-                    print(f"✅ 找到邮箱输入框: {selector}")
-                    break
+                if self.page is not None:
+                    email_input = self.page.wait_for_selector(
+                        selector, timeout=5000)
+                    if email_input:
+                        print(f"✅ 找到邮箱输入框: {selector}")
+                        break
             except:
                 continue
 
@@ -835,7 +897,7 @@ class EmailChecker:
         wait_with_message(1, "等待输入完成")
         return True
 
-    def _click_continue_if_exists(self):
+    def _click_continue_if_exists(self) -> bool:
         """点击继续按钮（如果存在）"""
         continue_selectors = [
             'button[type="submit"]:has-text("Continue")',
@@ -847,18 +909,20 @@ class EmailChecker:
 
         for selector in continue_selectors:
             try:
-                continue_button = self.page.wait_for_selector(selector, timeout=3000)
-                if continue_button:
-                    print(f"✅ 找到继续按钮: {selector}")
-                    continue_button.click()
-                    wait_with_message(3, "等待页面跳转")
-                    return True
+                if self.page is not None:
+                    continue_button = self.page.wait_for_selector(
+                        selector, timeout=3000)
+                    if continue_button:
+                        print(f"✅ 找到继续按钮: {selector}")
+                        continue_button.click()
+                        wait_with_message(3, "等待页面跳转")
+                        return True
             except:
                 continue
 
         return False
 
-    def _input_password_step(self, password):
+    def _input_password_step(self, password: str) -> bool:
         """输入密码步骤"""
         # 等待密码页面加载
         wait_with_message(2, "等待密码页面加载")
@@ -875,10 +939,12 @@ class EmailChecker:
         password_input = None
         for selector in password_selectors:
             try:
-                password_input = self.page.wait_for_selector(selector, timeout=5000)
-                if password_input:
-                    print(f"✅ 找到密码输入框: {selector}")
-                    break
+                if self.page is not None:
+                    password_input = self.page.wait_for_selector(
+                        selector, timeout=5000)
+                    if password_input:
+                        print(f"✅ 找到密码输入框: {selector}")
+                        break
             except:
                 continue
 
@@ -892,7 +958,7 @@ class EmailChecker:
         wait_with_message(1, "等待输入完成")
         return True
 
-    def _submit_login(self):
+    def _submit_login(self) -> bool:
         """提交登录"""
         login_selectors = [
             'button[type="submit"]:has-text("Continue")',
@@ -910,10 +976,12 @@ class EmailChecker:
         login_button = None
         for selector in login_selectors:
             try:
-                login_button = self.page.wait_for_selector(selector, timeout=5000)
-                if login_button:
-                    print(f"✅ 找到登录按钮: {selector}")
-                    break
+                if self.page is not None:
+                    login_button = self.page.wait_for_selector(
+                        selector, timeout=5000)
+                    if login_button:
+                        print(f"✅ 找到登录按钮: {selector}")
+                        break
             except:
                 continue
 
@@ -923,9 +991,13 @@ class EmailChecker:
         else:
             print("⚠️ 未找到登录按钮，尝试按Enter键...")
             # 尝试在密码框按Enter
-            password_inputs = self.page.query_selector_all('input[type="password"]')
-            if password_inputs:
-                password_inputs[0].press('Enter')
+            if self.page is not None:
+                password_inputs = self.page.query_selector_all(
+                    'input[type="password"]')
+                if password_inputs:
+                    password_inputs[0].press('Enter')
+                else:
+                    return False
             else:
                 return False
 
@@ -933,29 +1005,68 @@ class EmailChecker:
         wait_with_message(5, "等待登录完成")
         return True
 
-    def _verify_login_success(self):
-        """验证登录是否成功"""
-        current_url = self.page.url
-        print(f"📋 登录后页面: {current_url}")
+    def _verify_login_success(self) -> bool:
+        """Verify if login was successful by checking the current page URL and content"""
+        try:
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
 
-        # 检查是否成功登录
-        if any(keyword in current_url.lower() for keyword in ['dashboard', 'home', 'app', 'console']):
-            print("✅ 登录成功!")
+            # Wait for page to load after login attempt
+            wait_with_message(3, "等待登录结果")
+
+            # Check URL - successful login should not contain 'login' or 'signin'
+            current_url = self.page.url.lower()
+            if "login" in current_url or "signin" in current_url:
+                print(f"❌ 仍在登录页面: {current_url}")
+                return False
+
+            # Check for success indicators in page content
+            page_content = self.page.content().lower()
+            success_indicators = [
+                "welcome",
+                "dashboard",
+                "home",
+                "success",
+                "成功登录"
+            ]
+
+            if any(indicator in page_content for indicator in success_indicators):
+                print("✅ 登录成功")
+                return True
+
+            # Check for error messages
+            error_indicators = [
+                "invalid",
+                "error",
+                "incorrect",
+                "failed",
+                "错误"
+            ]
+
+            if any(indicator in page_content for indicator in error_indicators):
+                print("❌ 登录失败 - 检测到错误消息")
+                return False
+
+            # Default case - assume success if no clear indicators
+            print("⚠️ 无法确定登录状态，假设成功")
             return True
-        elif "login" in current_url.lower():
-            print("❌ 登录失败，仍在登录页面")
+
+        except Exception as e:
+            print(f"❌ 验证登录状态失败: {e}")
             return False
-        else:
-            print("✅ 登录可能成功，已跳转到新页面")
-            return True
 
-    def get_api_key_from_tavily(self):
+    def get_api_key_from_tavily(self) -> Optional[str]:
         """从Tavily获取API key"""
         try:
             print("🔑 开始查找API key...")
 
             # 等待页面完全加载
             wait_with_message(2, "等待页面加载")
+
+            if not self.page:
+                print("❌ 页面未初始化")
+                return None
 
             current_url = self.page.url
             print(f"📋 当前页面: {current_url}")
@@ -981,9 +1092,14 @@ class EmailChecker:
             if api_key and not '*' in api_key:
                 return api_key
 
+            if not self.page:
+                print("❌ 页面未初始化")
+                return None
+
             # 查找复制按钮（根据用户提供的HTML结构）
             print("🔍 查找复制按钮...")
-            copy_buttons = self.page.query_selector_all('button.chakra-button.css-1nit5dt')
+            copy_buttons = self.page.query_selector_all(
+                'button.chakra-button.css-1nit5dt')
 
             for i, button in enumerate(copy_buttons):
                 try:
@@ -992,7 +1108,8 @@ class EmailChecker:
                     if svg:
                         # 检查SVG是否包含复制图标的路径
                         rect = svg.query_selector('rect[x="9"][y="9"]')
-                        path = svg.query_selector('path[d*="M5 15H4a2 2 0 0 1-2-2V4"]')
+                        path = svg.query_selector(
+                            'path[d*="M5 15H4a2 2 0 0 1-2-2V4"]')
 
                         if rect and path:
                             print(f"✅ 找到复制按钮 {i+1}")
@@ -1001,26 +1118,33 @@ class EmailChecker:
                             parent = button.evaluate('el => el.parentElement')
                             if parent:
                                 # 在父元素中查找API key
-                                parent_text = button.evaluate('el => el.parentElement.innerText')
+                                parent_text = button.evaluate(
+                                    'el => el.parentElement.innerText')
                                 if parent_text and 'tvly-' in parent_text:
                                     import re
-                                    match = re.search(r'tvly-[a-zA-Z0-9_-]+', parent_text)
+                                    match = re.search(
+                                        r'tvly-[a-zA-Z0-9_-]+', parent_text)
                                     if match:
                                         api_key = match.group(0)
                                         print(f"✅ 从复制按钮附近找到API key: {api_key}")
-                                        return api_key
+                                        return str(api_key)
 
                             # 尝试点击复制按钮
                             print("🔗 尝试点击复制按钮...")
                             button.click()
                             wait_with_message(1, "等待复制完成")
 
+                            if not self.page:
+                                print("❌ 页面未初始化")
+                                return None
+
                             # 尝试从剪贴板获取（如果支持）
                             try:
-                                clipboard_text = self.page.evaluate('() => navigator.clipboard.readText()')
+                                clipboard_text = self.page.evaluate(
+                                    '() => navigator.clipboard.readText()')
                                 if clipboard_text and 'tvly-' in clipboard_text:
                                     print(f"✅ 从剪贴板获取API key: {clipboard_text}")
-                                    return clipboard_text.strip()
+                                    return str(clipboard_text.strip())
                             except:
                                 print("⚠️ 无法从剪贴板读取")
 
@@ -1035,7 +1159,7 @@ class EmailChecker:
             print(f"❌ 获取API key失败: {e}")
             return None
 
-    def click_eye_icon_to_show_api_key(self):
+    def click_eye_icon_to_show_api_key(self) -> bool:
         """点击眼睛图标显示完整的API key（多种策略）"""
         try:
             print("👁️ 开始多策略眼睛图标点击流程...")
@@ -1068,18 +1192,18 @@ class EmailChecker:
             # 策略3: 滚动页面后再尝试
             print("📜 策略3: 滚动页面后点击眼睛")
             try:
-                self._scroll_and_click_eye()
-                print("✅ 策略3成功：滚动后眼睛点击成功")
-                return True
+                if self._scroll_and_click_eye():
+                    print("✅ 策略3成功：滚动后眼睛点击成功")
+                    return True
             except Exception as e:
                 print(f"⚠️ 策略3失败: {e}")
 
             # 策略4: 使用键盘操作
             print("⌨️ 策略4: 使用键盘操作")
             try:
-                self._keyboard_navigate_to_eye()
-                print("✅ 策略4成功：键盘操作成功")
-                return True
+                if self._keyboard_navigate_to_eye():
+                    print("✅ 策略4成功：键盘操作成功")
+                    return True
             except Exception as e:
                 print(f"⚠️ 策略4失败: {e}")
 
@@ -1090,7 +1214,7 @@ class EmailChecker:
             print(f"❌ 眼睛图标点击完全失败: {e}")
             return False
 
-    def _try_click_eye_icon(self):
+    def _try_click_eye_icon(self) -> bool:
         """尝试点击眼睛图标（常规方法）"""
         eye_button_selectors = [
             'button.chakra-button.css-1a1nl3a',
@@ -1099,6 +1223,10 @@ class EmailChecker:
             'button[aria-label*="show" i]',
             'button[aria-label*="reveal" i]'
         ]
+
+        if not self.page:
+            print("❌ 页面未初始化")
+            return False
 
         for selector in eye_button_selectors:
             try:
@@ -1121,9 +1249,12 @@ class EmailChecker:
 
         return False
 
-    def _try_click_eye_icon_force(self):
+    def _try_click_eye_icon_force(self) -> bool:
         """强制尝试点击眼睛图标（忽略弹窗）"""
         try:
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
             # 查找所有可能的眼睛图标按钮
             all_buttons = self.page.query_selector_all('button')
 
@@ -1132,7 +1263,7 @@ class EmailChecker:
                     # 检查按钮的HTML内容是否包含眼睛图标特征
                     button_html = button.inner_html()
                     if ('viewBox="0 0 24 24"' in button_html and
-                        ('M12 6.5' in button_html or 'eye' in button_html.lower())):
+                            ('M12 6.5' in button_html or 'eye' in button_html.lower())):
                         print(f"✅ 找到可能的眼睛图标按钮 {i+1}")
 
                         # 强制点击，忽略可能的遮挡
@@ -1149,9 +1280,12 @@ class EmailChecker:
             print(f"❌ 强制点击眼睛图标失败: {e}")
             return False
 
-    def _scroll_and_click_eye(self):
+    def _scroll_and_click_eye(self) -> bool:
         """滚动页面后点击眼睛图标"""
         try:
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
             print("📜 滚动页面寻找眼睛图标...")
 
             # 滚动到页面顶部
@@ -1176,9 +1310,12 @@ class EmailChecker:
             print(f"❌ 滚动点击失败: {e}")
             return False
 
-    def _keyboard_navigate_to_eye(self):
+    def _keyboard_navigate_to_eye(self) -> bool:
         """使用键盘导航到眼睛图标"""
         try:
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
             print("⌨️ 使用键盘导航...")
 
             # 按Tab键导航到可能的眼睛图标
@@ -1204,9 +1341,12 @@ class EmailChecker:
             print(f"❌ 键盘导航失败: {e}")
             return False
 
-    def _check_api_key_visible(self):
+    def _check_api_key_visible(self) -> bool:
         """检查API key是否已显示"""
         try:
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
             # 查找可能包含完整API key的元素
             api_key_selectors = [
                 'input[value*="tvly-"]',
@@ -1230,7 +1370,7 @@ class EmailChecker:
         except:
             return False
 
-    def close_all_popups_systematically(self):
+    def close_all_popups_systematically(self) -> bool:
         """系统性地关闭所有弹窗（稳定版：1秒间隔点击）"""
         try:
             print("🎭 开始稳定弹窗处理流程...")
@@ -1276,7 +1416,7 @@ class EmailChecker:
             print(f"❌ 稳定弹窗处理失败: {e}")
             return False
 
-    def _click_get_started(self):
+    def _click_get_started(self) -> bool:
         """点击Get Started按钮"""
         get_started_selectors = [
             'button:has-text("Get Started")',
@@ -1285,6 +1425,10 @@ class EmailChecker:
             'button[type="button"]:has-text("Get Started")',
             '.chakra-button:has-text("Get Started")'
         ]
+
+        if not self.page:
+            print("❌ 页面未初始化")
+            return False
 
         for selector in get_started_selectors:
             try:
@@ -1297,7 +1441,7 @@ class EmailChecker:
                 continue
         return False
 
-    def _click_next_button(self):
+    def _click_next_button(self) -> bool:
         """点击Next按钮"""
         next_selectors = [
             'button:has-text("Next")',
@@ -1311,6 +1455,10 @@ class EmailChecker:
             'button:has-text("OK")'
         ]
 
+        if not self.page:
+            print("❌ 页面未初始化")
+            return False
+
         for selector in next_selectors:
             try:
                 btn = self.page.query_selector(selector)
@@ -1322,7 +1470,7 @@ class EmailChecker:
                 continue
         return False
 
-    def _click_close_button(self):
+    def _click_close_button(self) -> bool:
         """点击关闭按钮"""
         close_selectors = [
             'button[aria-label="Close"]',
@@ -1335,6 +1483,10 @@ class EmailChecker:
             '[data-testid="close-button"]'
         ]
 
+        if not self.page:
+            print("❌ 页面未初始化")
+            return False
+
         for selector in close_selectors:
             try:
                 btn = self.page.query_selector(selector)
@@ -1346,9 +1498,12 @@ class EmailChecker:
                 continue
         return False
 
-    def _try_other_close_methods(self):
+    def _try_other_close_methods(self) -> bool:
         """尝试其他关闭方法"""
         try:
+            if not self.page:
+                print("❌ 页面未初始化")
+                return False
             # 方法1: 查找关闭按钮
             close_button_selectors = [
                 'button[aria-label="Close"]',
@@ -1397,7 +1552,6 @@ class EmailChecker:
             # 方法3: 点击页面空白区域关闭弹窗
             print("🔍 尝试点击页面空白区域关闭弹窗...")
             try:
-                # 点击页面左上角空白区域
                 self.page.click('body', position={'x': 50, 'y': 50})
                 wait_with_message(1, "等待弹窗关闭")
                 print("✅ 已点击页面空白区域")
@@ -1422,9 +1576,12 @@ class EmailChecker:
             print(f"⚠️ 关闭悬浮弹窗失败: {e}")
             return False
 
-    def find_api_key_on_page(self):
+    def find_api_key_on_page(self) -> Optional[str]:
         """在当前页面查找API key"""
         try:
+            if not self.page:
+                print("❌ 页面未初始化")
+                return None
             # 查找包含API key的元素
             api_key_selectors = [
                 'input[value*="tvly-"]',
@@ -1446,7 +1603,7 @@ class EmailChecker:
                         value = element.get_attribute('value') or ''
                         if 'tvly-' in value:
                             print(f"✅ 从input value中找到API key: {value}")
-                            return value.strip()
+                            return str(value.strip())
 
                         # 尝试从文本内容获取
                         text = element.inner_text() or ''
@@ -1457,7 +1614,7 @@ class EmailChecker:
                             if match:
                                 api_key = match.group(0)
                                 print(f"✅ 从文本中找到API key: {api_key}")
-                                return api_key
+                                return str(api_key)
                 except:
                     continue
 
@@ -1466,7 +1623,7 @@ class EmailChecker:
             import re
             matches = re.findall(r'tvly-[a-zA-Z0-9_-]+', page_content)
             if matches:
-                api_key = matches[0]
+                api_key = str(matches[0])
                 print(f"✅ 从页面文本中找到API key: {api_key}")
                 return api_key
 
@@ -1476,58 +1633,61 @@ class EmailChecker:
             print(f"❌ 在页面中查找API key失败: {e}")
             return None
 
-    def wait_for_email(self, target_email, max_wait_time=300):
+    def wait_for_email(self, target_email: str, max_wait_time: int = 300) -> Optional[str]:
         """等待验证邮件到达"""
         print(f"⏳ 等待验证邮件，最长等待 {max_wait_time} 秒...")
         start_time = time.time()
-        
+
         while time.time() - start_time < max_wait_time:
             # 刷新页面
             try:
+                if not self.page:
+                    print("❌ 页面未初始化")
+                    break
                 self.page.reload()
                 wait_with_message(3, "刷新页面")
-                
+
                 # 检查验证邮件
                 verification_link = self.check_for_tavily_email(target_email)
                 if verification_link:
                     return verification_link
-                
+
                 elapsed = int(time.time() - start_time)
                 print(f"⏳ 未收到验证邮件，继续等待... ({elapsed}s)")
-                
+
                 # 等待30秒后再次检查
                 wait_with_message(30, "等待新邮件")
-                
+
             except Exception as e:
                 print(f"⚠️ 检查邮件时出错: {e}")
                 wait_with_message(10, "等待后重试")
-        
+
         print("❌ 等待超时，未收到验证邮件")
         return None
 
 
-def main():
+def main() -> None:
     """主函数 - 用于测试邮箱检查功能"""
     checker = EmailChecker()
-    
+
     try:
         checker.start_browser()
-        
+
         if not checker.load_email_page():
             print("❌ 无法加载邮箱页面，请先运行 email_login_helper.py 进行登录设置")
             return
-        
+
         # 测试查找邮件功能
         print("\n🧪 测试查找邮件功能...")
         emails = checker.find_emails_on_page()
-        
+
         if emails:
             print(f"✅ 找到 {len(emails)} 个邮件")
             for i, email in enumerate(emails[:5]):  # 显示前5个
                 print(f"  {i+1}. {email['text'][:100]}...")
         else:
             print("⚠️ 未找到任何邮件")
-        
+
         # 询问是否要等待验证邮件
         test_email = input("\n输入要测试的邮箱地址（或按Enter跳过）: ").strip()
         if test_email:
@@ -1536,7 +1696,7 @@ def main():
                 print(f"🎉 成功获取验证链接: {verification_link}")
             else:
                 print("❌ 未能获取验证链接")
-        
+
     except KeyboardInterrupt:
         print("\n⚠️ 用户中断了程序")
     except Exception as e:

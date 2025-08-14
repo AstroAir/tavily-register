@@ -1,25 +1,38 @@
 #!/usr/bin/env python3
 """
-智能Tavily自动化模块
-基于深层HTML信息分析，使用智能元素检测和等待机制
+Intelligent Tavily Automation Module
+
+Based on deep HTML information analysis, using intelligent element detection
+and waiting mechanisms.
 """
 import time
-from playwright.sync_api import sync_playwright
-from config import *
-from utils import generate_email, save_api_key
+from typing import Any, Optional, Tuple
+from playwright.sync_api import sync_playwright, Page, Browser, Playwright
+from ..config.settings import *
+from ..utils.helpers import generate_email, save_api_key
 
 
 class IntelligentTavilyAutomation:
-    def __init__(self):
-        self.playwright = None
-        self.browser = None
-        self.page = None
-        self.email = None
-        self.password = DEFAULT_PASSWORD
-        self.debug = True
-        self.email_prefix = None  # 动态邮箱前缀
-        self.headless_mode = None  # 记住headless设置
-        
+    """
+    Provides intelligent automation for Tavily registration and API key retrieval,
+    using Playwright for browser automation and robust element detection strategies.
+    """
+
+    def __init__(self) -> None:
+        """
+        Initialize the IntelligentTavilyAutomation instance.
+
+        Sets up default values, selector strategies, and configuration for browser automation.
+        """
+        self.playwright: Optional[Playwright] = None
+        self.browser: Optional[Browser] = None
+        self.page: Optional[Page] = None
+        self.email: Optional[str] = None
+        self.password: str = DEFAULT_PASSWORD
+        self.debug: bool = True
+        self.email_prefix: Optional[str] = None  # 动态邮箱前缀
+        self.headless_mode: Optional[bool] = None  # 记住headless设置
+
         # 基于深层分析的智能选择器配置
         self.selectors = {
             'signup_button': {
@@ -57,7 +70,8 @@ class IntelligentTavilyAutomation:
                 'primary': [
                     'input#password',                 # 最稳定：基于ID
                     'input[name="password"]',         # 最稳定：基于name
-                    'input[type="password"][autocomplete="new-password"]',  # 稳定：组合属性
+                    # 稳定：组合属性
+                    'input[type="password"][autocomplete="new-password"]',
                 ],
                 'fallback': [
                     'input[type="password"]',         # 基于类型
@@ -75,15 +89,27 @@ class IntelligentTavilyAutomation:
                 ]
             }
         }
-    
-    def log(self, message, level="INFO"):
-        """调试日志"""
+
+    def log(self, message: str, level: str = "INFO") -> None:
+        """
+        Print a debug log message if debugging is enabled.
+
+        Args:
+            message (str): The message to log.
+            level (str): The log level (default: "INFO").
+        """
         if self.debug:
             timestamp = time.strftime("%H:%M:%S")
             print(f"[{timestamp}] {level}: {message}")
-    
-    def start_browser(self, headless=None):
-        """启动浏览器"""
+
+    def start_browser(self, headless: Optional[bool] = None) -> None:
+        """
+        Start a new browser session using Playwright.
+
+        Args:
+            headless (Optional[bool]): Whether to run the browser in headless mode.
+                If None, uses the default HEADLESS setting.
+        """
         self.playwright = sync_playwright().start()
         headless_mode = headless if headless is not None else HEADLESS
 
@@ -91,15 +117,19 @@ class IntelligentTavilyAutomation:
         self.headless_mode = headless_mode
 
         if BROWSER_TYPE == "firefox":
-            self.browser = self.playwright.firefox.launch(headless=headless_mode)
+            self.browser = self.playwright.firefox.launch(
+                headless=headless_mode)
         else:
-            self.browser = self.playwright.chromium.launch(headless=headless_mode)
+            self.browser = self.playwright.chromium.launch(
+                headless=headless_mode)
 
         self.page = self.browser.new_page()
         self.page.set_default_timeout(30000)
-    
-    def close_browser(self):
-        """关闭浏览器"""
+
+    def close_browser(self) -> None:
+        """
+        Close the current browser session and clean up resources.
+        """
         try:
             if self.page:
                 self.page.close()
@@ -114,57 +144,83 @@ class IntelligentTavilyAutomation:
             # 浏览器可能已经关闭，忽略错误
             self.log(f"⚠️ 浏览器关闭时出现错误（可忽略）: {e}", "DEBUG")
             pass
-    
-    def smart_wait_for_element(self, element_config, timeout=30000):
-        """智能等待元素出现"""
+
+    def smart_wait_for_element(self, element_config: dict, timeout: int = 30000) -> Tuple[Optional[Any], Optional[str]]:
+        """
+        Wait intelligently for an element to appear using primary and fallback selectors.
+
+        Args:
+            element_config (dict): Selector configuration with 'primary' and 'fallback' lists.
+            timeout (int): Total timeout in milliseconds.
+
+        Returns:
+            Tuple[Optional[Any], Optional[str]]: The found element and the selector used, or (None, None).
+        """
         primary_selectors = element_config['primary']
         fallback_selectors = element_config['fallback']
-        
+
         # 首先尝试主要选择器
         for selector in primary_selectors:
             try:
                 self.log(f"🔍 尝试主要选择器: {selector}")
-                element = self.page.wait_for_selector(selector, timeout=timeout//len(primary_selectors))
+                if self.page is None:
+                    self.log("❌ 页面未初始化")
+                    break
+                element = self.page.wait_for_selector(
+                    selector, timeout=timeout//len(primary_selectors))
                 if element:
                     self.log(f"✅ 找到元素: {selector}")
                     return element, selector
             except Exception as e:
-                self.log(f"❌ 主要选择器失败: {selector}")
+                self.log(f"❌ 主要选择器失败: {selector} ({e})")
                 continue
-        
+
         # 如果主要选择器都失败，尝试备用选择器
         self.log("⚠️ 主要选择器都失败，尝试备用选择器...")
         for selector in fallback_selectors:
             try:
                 self.log(f"🔍 尝试备用选择器: {selector}")
-                element = self.page.wait_for_selector(selector, timeout=timeout//len(fallback_selectors))
+                if self.page is None:
+                    self.log("❌ 页面未初始化")
+                    break
+                element = self.page.wait_for_selector(
+                    selector, timeout=timeout//len(fallback_selectors))
                 if element:
                     self.log(f"✅ 找到元素（备用）: {selector}")
                     return element, selector
             except Exception as e:
-                self.log(f"❌ 备用选择器失败: {selector}")
+                self.log(f"❌ 备用选择器失败: {selector} ({e})")
                 continue
-        
+
         return None, None
-    
-    def smart_click(self, element_name, retries=3):
-        """智能点击元素"""
+
+    def smart_click(self, element_name: str, retries: int = 3) -> bool:
+        """
+        Click an element intelligently, retrying with fallback selectors and page reloads.
+
+        Args:
+            element_name (str): The logical name of the element as defined in selectors.
+            retries (int): Number of retry attempts.
+
+        Returns:
+            bool: True if the click was successful, False otherwise.
+        """
         element_config = self.selectors.get(element_name)
         if not element_config:
             self.log(f"❌ 未找到元素配置: {element_name}")
             return False
-        
+
         for attempt in range(retries):
             self.log(f"🔄 尝试点击 {element_name} (第 {attempt+1}/{retries} 次)")
-            
+
             element, selector = self.smart_wait_for_element(element_config)
-            
+
             if element:
                 try:
                     # 确保元素可见和稳定
                     element.wait_for_element_state('visible', timeout=5000)
                     element.wait_for_element_state('stable', timeout=5000)
-                    
+
                     # 点击元素
                     element.click()
                     self.log(f"✅ 成功点击 {element_name}")
@@ -173,44 +229,57 @@ class IntelligentTavilyAutomation:
                     time.sleep(1)
 
                     # 等待页面响应
-                    self.page.wait_for_load_state('networkidle', timeout=10000)
+                    if self.page:
+                        self.page.wait_for_load_state(
+                            'networkidle', timeout=10000)
                     return True
-                    
+
                 except Exception as e:
                     self.log(f"❌ 点击失败: {e}")
-            
+
             # 如果失败，刷新页面重试
             if attempt < retries - 1:
                 self.log("🔄 刷新页面后重试...")
-                self.page.reload()
-                self.page.wait_for_load_state('networkidle')
-                time.sleep(2)
-        
+                if self.page:
+                    self.page.reload()
+                    self.page.wait_for_load_state('networkidle')
+                    time.sleep(2)
+
         self.log(f"❌ 最终未能点击 {element_name}")
         return False
-    
-    def smart_fill(self, element_name, text, retries=3):
-        """智能填写输入框"""
+
+    def smart_fill(self, element_name: str, text: str, retries: int = 3) -> bool:
+        """
+        Fill an input field intelligently, retrying with fallback selectors and page reloads.
+
+        Args:
+            element_name (str): The logical name of the input element as defined in selectors.
+            text (str): The text to fill into the input field.
+            retries (int): Number of retry attempts.
+
+        Returns:
+            bool: True if the fill was successful, False otherwise.
+        """
         element_config = self.selectors.get(element_name)
         if not element_config:
             self.log(f"❌ 未找到元素配置: {element_name}")
             return False
-        
+
         for attempt in range(retries):
             self.log(f"🔄 尝试填写 {element_name} (第 {attempt+1}/{retries} 次)")
-            
+
             element, selector = self.smart_wait_for_element(element_config)
-            
+
             if element:
                 try:
                     # 确保元素可见和可编辑
                     element.wait_for_element_state('visible', timeout=5000)
                     element.wait_for_element_state('editable', timeout=5000)
-                    
+
                     # 清空并填写
                     element.fill('')  # 先清空
                     element.fill(text)
-                    
+
                     # 增加1秒延迟确保填写稳定
                     time.sleep(1)
 
@@ -220,28 +289,38 @@ class IntelligentTavilyAutomation:
                         self.log(f"✅ 成功填写 {element_name}: {text}")
                         return True
                     else:
-                        self.log(f"⚠️ 填写验证失败: 期望 '{text}', 实际 '{filled_value}'")
-                        
+                        self.log(
+                            f"⚠️ 填写验证失败: 期望 '{text}', 实际 '{filled_value}'")
+
                 except Exception as e:
                     self.log(f"❌ 填写失败: {e}")
-            
+
             # 如果失败，刷新页面重试
             if attempt < retries - 1:
                 self.log("🔄 刷新页面后重试...")
-                self.page.reload()
-                self.page.wait_for_load_state('networkidle')
-                time.sleep(2)
-        
+                if self.page:
+                    self.page.reload()
+                    self.page.wait_for_load_state('networkidle')
+                    time.sleep(2)
+
         self.log(f"❌ 最终未能填写 {element_name}")
         return False
-    
-    def navigate_to_signup(self):
-        """导航到注册页面"""
+
+    def navigate_to_signup(self) -> bool:
+        """
+        Navigate to the Tavily signup page, using intelligent element detection.
+
+        Returns:
+            bool: True if navigation was successful, False otherwise.
+        """
         try:
             self.log("🌐 正在访问Tavily主页...")
+            if self.page is None:
+                self.log("❌ 页面未初始化")
+                return False
             self.page.goto(TAVILY_HOME_URL)
             self.page.wait_for_load_state('networkidle')
-            
+
             # 智能点击Sign Up按钮
             if self.smart_click('signup_button'):
                 self.log("✅ 成功导航到注册页面")
@@ -252,55 +331,70 @@ class IntelligentTavilyAutomation:
                 self.page.goto(TAVILY_SIGNUP_URL)
                 self.page.wait_for_load_state('networkidle')
                 return True
-                
+
         except Exception as e:
             self.log(f"❌ 导航到注册页面失败: {e}")
             return False
-    
-    def fill_registration_form(self):
-        """填写注册表单"""
+
+    def fill_registration_form(self) -> bool:
+        """
+        Fill out the Tavily registration form with a generated email.
+
+        Returns:
+            bool: True if the form was filled successfully, False otherwise.
+        """
         try:
             # 生成随机邮箱（使用动态前缀）
             self.email = generate_email(self.email_prefix)
             self.log(f"📧 生成的注册邮箱: {self.email}")
-            
+
             # 智能填写邮箱
-            if not self.smart_fill('email_input', self.email):
+            if self.email and not self.smart_fill('email_input', self.email):
                 return False
-            
+
             # 智能点击继续按钮
             if not self.smart_click('continue_button'):
                 return False
-            
+
             self.log("✅ 注册表单填写完成")
             return True
-            
+
         except Exception as e:
             self.log(f"❌ 填写注册表单失败: {e}")
             return False
-    
-    def fill_password(self):
-        """填写密码"""
+
+    def fill_password(self) -> bool:
+        """
+        Fill in the password field and submit the registration form.
+
+        Returns:
+            bool: True if the password was filled and submitted successfully, False otherwise.
+        """
         try:
             self.log("🔐 正在填写密码...")
-            
+
             # 智能填写密码
             if not self.smart_fill('password_input', self.password):
                 return False
-            
+
             # 智能点击提交按钮
             if not self.smart_click('submit_button'):
                 return False
-            
+
             self.log("✅ 密码填写完成")
             return True
-            
+
         except Exception as e:
             self.log(f"❌ 填写密码失败: {e}")
             return False
-    
-    def run_registration(self):
-        """运行完整的智能注册流程"""
+
+    def run_registration(self) -> bool:
+        """
+        Run the complete intelligent registration process for Tavily.
+
+        Returns:
+            bool: True if registration was successful, False otherwise.
+        """
         try:
             self.log("🚀 开始智能注册流程...")
 
@@ -320,8 +414,13 @@ class IntelligentTavilyAutomation:
             self.log(f"❌ 智能注册流程失败: {e}")
             return False
 
-    def run_complete_automation(self):
-        """运行完整的智能自动化流程：注册 + 邮件验证 + API key获取"""
+    def run_complete_automation(self) -> Optional[str]:
+        """
+        Run the full intelligent automation process: registration, email verification, and API key retrieval.
+
+        Returns:
+            Optional[str]: The retrieved API key if successful, None otherwise.
+        """
         try:
             self.log("🚀 开始完整的智能自动化流程...")
 
@@ -341,7 +440,10 @@ class IntelligentTavilyAutomation:
                 self.log(f"🔑 API Key: {api_key}")
 
                 # 保存API key
-                save_api_key(self.email, api_key, self.password)
+                if self.email:
+                    save_api_key(self.email, api_key, self.password)
+                else:
+                    self.log("⚠️ 邮箱地址为空，无法保存API key")
                 return api_key
             else:
                 raise Exception("邮件验证或API key获取失败")
@@ -350,11 +452,16 @@ class IntelligentTavilyAutomation:
             self.log(f"❌ 完整自动化流程失败: {e}")
             return None
 
-    def handle_email_verification_and_login(self):
-        """处理邮件验证和登录，返回API key"""
+    def handle_email_verification_and_login(self) -> Optional[str]:
+        """
+        Handle the email verification process and login to retrieve the Tavily API key.
+
+        Returns:
+            Optional[str]: The retrieved API key if successful, None otherwise.
+        """
         try:
             # 导入邮件检查器
-            from email_checker import EmailChecker
+            from ..email.checker import EmailChecker
 
             self.log("📧 初始化邮件检查器...")
             email_checker = EmailChecker()
@@ -372,7 +479,10 @@ class IntelligentTavilyAutomation:
 
                 # 查找验证邮件
                 self.log(f"🔍 查找验证邮件: {self.email}")
-                verification_link = email_checker.check_for_tavily_email(self.email)
+                if not self.email:
+                    raise Exception("邮箱地址为空，无法查找验证邮件")
+                verification_link = email_checker.check_for_tavily_email(
+                    self.email)
 
                 if not verification_link:
                     raise Exception("未找到验证邮件")
@@ -381,7 +491,8 @@ class IntelligentTavilyAutomation:
 
                 # 访问验证链接
                 self.log("🔗 访问验证链接...")
-                result = email_checker.navigate_to_verification_link(verification_link)
+                result = email_checker.navigate_to_verification_link(
+                    verification_link)
 
                 if result == "login_required":
                     self.log("🔑 需要登录Tavily账户...")
