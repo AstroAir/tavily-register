@@ -19,18 +19,32 @@ The source code follows Python package best practices with proper module separat
 - `intelligent_automation.py`: Advanced automation using intelligent element detection
 - `traditional_automation.py`: Traditional automation approach for testing and comparison
 
-### Email Modules  
+### Email Modules
 
 - `checker.py`: Email verification and checking functionality
-- `login_helper.py`: Email login assistance and cookie management
+- `login_helper.py`: Email login assistance and enhanced cookie management
 
 ### Configuration
 
-- `settings.py`: All application configuration constants and settings
+- `settings.py`: All application configuration constants and settings with .env file support
 
 ### Utilities
 
-- `helpers.py`: Common utility functions used throughout the application
+- `helpers.py`: Common utility functions with enhanced cookie handling
+
+## Recent Improvements
+
+### Enhanced Cookie Management
+- **Fixed Cookie Logic**: Corrected the cookie saving flow in main.py to properly save cookies after user login
+- **Enhanced Persistence**: Added cookie expiry validation (7-day limit) and better error handling
+- **Improved Format Handling**: Added cookie format validation and Playwright compatibility functions
+- **Metadata Tracking**: Cookies now saved with timestamps and count information for better tracking
+
+### Environment Variable Support
+- **Added .env File Loading**: Implemented python-dotenv integration for loading configuration from .env files
+- **Flexible Configuration**: Supports both direct environment variables and .env file configuration
+- **Auto-detection**: Automatically finds and loads .env files from project root or current directory
+- **Graceful Fallback**: Falls back to default values if .env file is not found or python-dotenv is not installed
 
 ## Development Guidelines
 

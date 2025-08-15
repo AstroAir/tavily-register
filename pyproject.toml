@@ -28,6 +28,7 @@ dependencies = [
     "requests>=2.31.0",
     "beautifulsoup4>=4.12.2",
     "lxml>=4.9.3",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -51,7 +52,6 @@ docs = [
     "mkdocs-macros-plugin>=1.0.0",
     "mkdocs-include-markdown-plugin>=6.0.0",
     "mkdocs-glightbox>=0.3.0",
-    "mkdocs-social>=0.3.0",
     "mkdocs-i18n>=0.4.0",
     "pymdown-extensions>=10.0.0",
     "pillow>=10.0.0",

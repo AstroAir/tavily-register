@@ -12,6 +12,8 @@ from typing import Optional, Tuple
 from .core.intelligent_automation import IntelligentTavilyAutomation
 from .core.traditional_automation import TavilyAutomation
 from .email.login_helper import EmailLoginHelper
+from .config.settings import EMAIL_CHECK_URL
+from .utils.helpers import wait_with_message, load_cookies
 
 
 class TavilyMainController:
@@ -27,11 +29,22 @@ class TavilyMainController:
                 return None
 
             with open(self.cookie_file, 'r', encoding='utf-8') as f:
-                cookies = json.load(f)
+                data = json.load(f)
+
+            # 处理新格式和旧格式的cookies
+            if isinstance(data, list):
+                # 旧格式 - 直接是cookie列表
+                cookies = data
+            elif isinstance(data, dict) and 'cookies' in data:
+                # 新格式 - 包含metadata的格式
+                cookies = data['cookies']
+            else:
+                print("❌ 无效的cookies文件格式")
+                return None
 
             # 查找包含用户信息的JWT token
             for cookie in cookies:
-                if cookie.get('name') == 'aut':
+                if isinstance(cookie, dict) and cookie.get('name') == 'aut':
                     jwt_token = cookie.get('value', '')
                     try:
                         # 解析JWT token (格式: header.payload.signature)
@@ -80,22 +93,33 @@ class TavilyMainController:
         try:
             email_helper.start_browser()
 
-            # 让用户手动登录
-            print("\n📋 请在浏览器中完成邮箱登录...")
-            input("登录完成后，按Enter继续...")
+            # 访问邮箱网站
+            if not email_helper.page:
+                print("❌ 页面未初始化")
+                return False
 
-            # 保存cookies
-            if email_helper.test_saved_cookies():  # Fixed method name
+            email_helper.page.goto(EMAIL_CHECK_URL)
+            wait_with_message(2, "等待页面加载")
+
+            # 引导用户手动登录并保存cookies
+            if email_helper.manual_login_guide():
                 print("✅ Cookies保存成功")
 
-                # 尝试获取邮箱前缀
-                self.email_prefix = self.get_email_prefix_from_cookies()
-                if self.email_prefix:
-                    print(f"✅ 邮箱前缀设置为: {self.email_prefix}")
-                    return True
+                # 测试保存的cookies是否有效
+                if email_helper.test_saved_cookies():
+                    print("✅ Cookies测试成功")
+
+                    # 尝试获取邮箱前缀
+                    self.email_prefix = self.get_email_prefix_from_cookies()
+                    if self.email_prefix:
+                        print(f"✅ 邮箱前缀设置为: {self.email_prefix}")
+                        return True
+                    else:
+                        print("⚠️ 无法获取邮箱前缀，请重新登录")
+                        return False
                 else:
-                    print("⚠️ 无法获取邮箱前缀，请重新登录")
-                    return False
+                    print("⚠️ Cookies测试失败，但已保存")
+                    return True  # 即使测试失败，cookies已保存，可以继续
             else:
                 print("❌ Cookies保存失败")
                 return False
@@ -158,13 +182,15 @@ class TavilyMainController:
 
     def check_and_setup_cookies(self) -> bool:
         """检查并设置cookies（如果需要）"""
-        # 检查cookie文件是否存在
-        if not os.path.exists(self.cookie_file):
-            print("⚠️ 未找到邮箱cookies文件，需要先设置邮箱登录")
+        # 使用增强的cookie加载功能检查cookies
+        cookies = load_cookies(self.cookie_file)
+        if not cookies:
+            print("⚠️ 未找到有效的邮箱cookies文件，需要先设置邮箱登录")
             print("📋 即将自动启动邮箱登录设置流程...")
             return self.setup_email_cookies()
 
-        # 检查邮箱前缀是否可用
+        # 尝试获取邮箱前缀
+        self.email_prefix = self.get_email_prefix_from_cookies()
         if not self.email_prefix:
             print("⚠️ 无法从cookies获取邮箱前缀，可能cookies已过期")
             print("📋 即将重新设置邮箱登录...")

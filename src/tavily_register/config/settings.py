@@ -3,9 +3,36 @@ Configuration settings for Tavily Register.
 
 This module contains all configuration constants and settings used throughout
 the application. It supports environment variables for flexible configuration.
+Environment variables can be set directly or loaded from a .env file.
 """
 import os
+from pathlib import Path
 from typing import Union
+
+# Load .env file if it exists
+try:
+    from dotenv import load_dotenv
+
+    # Find the project root directory (where .env should be located)
+    current_dir = Path(__file__).resolve()
+    project_root = current_dir.parent.parent.parent.parent  # Go up to project root
+    env_file = project_root / '.env'
+
+    if env_file.exists():
+        load_dotenv(env_file)
+        print(f"✅ 已加载环境配置文件: {env_file}")
+    else:
+        # Also try loading from current working directory
+        if Path('.env').exists():
+            load_dotenv('.env')
+            print("✅ 已加载当前目录的环境配置文件: .env")
+        else:
+            print("ℹ️ 未找到 .env 文件，使用默认配置和系统环境变量")
+
+except ImportError:
+    print("⚠️ python-dotenv 未安装，无法加载 .env 文件")
+except Exception as e:
+    print(f"⚠️ 加载 .env 文件时出错: {e}")
 
 
 def get_env_bool(key: str, default: bool = False) -> bool:

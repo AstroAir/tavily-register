@@ -8,7 +8,7 @@ import json
 from typing import Optional
 from playwright.sync_api import sync_playwright, Playwright, Browser, Page
 from ..config.settings import *
-from ..utils.helpers import load_cookies, wait_with_message
+from ..utils.helpers import load_cookies, save_cookies, wait_with_message, prepare_cookies_for_playwright
 
 
 class EmailLoginHelper:
@@ -167,27 +167,29 @@ class EmailLoginHelper:
         try:
             cookies = self.page.context.cookies()
 
-            # 直接保存到JSON文件（与cookie_manager.py相同的方式）
-            with open(COOKIES_FILE, 'w', encoding='utf-8') as f:
-                json.dump(cookies, f, ensure_ascii=False, indent=2)
+            # 转换为字典格式以便保存
+            cookie_dicts = [dict(cookie) for cookie in cookies]
 
-            print(f"✅ 成功保存 {len(cookies)} 个cookies到 {COOKIES_FILE}")
+            # 使用增强的cookie保存函数
+            if save_cookies(cookie_dicts, COOKIES_FILE):
+                # 显示关键cookies信息
+                print("\n📋 关键cookies信息:")
+                for cookie in cookies:
+                    name = cookie.get('name')
+                    value = cookie.get('value')
+                    if name in ['aut', 'session', 'token', 'auth'] and value is not None:
+                        print(f"  {name}: {value[:20]}...")
 
-            # 显示关键cookies信息
-            print("\n📋 关键cookies信息:")
-            for cookie in cookies:
-                name = cookie.get('name')
-                value = cookie.get('value')
-                if name in ['aut', 'session', 'token', 'auth'] and value is not None:
-                    print(f"  {name}: {value[:20]}...")
+                # 显示当前页面信息
+                print(f"\n📋 当前页面: {self.page.title()}")
+                print(f"📋 当前URL: {self.page.url}")
 
-            # 显示当前页面信息
-            print(f"\n📋 当前页面: {self.page.title()}")
-            print(f"📋 当前URL: {self.page.url}")
+                return True
+            else:
+                return False
 
-            return True
         except Exception as e:
-            print(f"❌ 保存cookies失败: {e}")
+            print(f"❌ 获取cookies失败: {e}")
             return False
 
     def test_saved_cookies(self) -> bool:
@@ -214,7 +216,52 @@ class EmailLoginHelper:
                 print("❌ 浏览器未初始化")
                 return False
             test_page = self.browser.new_page()
-            test_page.context.add_cookies(cookies)
+
+            # 准备cookies格式以供Playwright使用
+            valid_cookies = prepare_cookies_for_playwright(cookies)
+
+            if valid_cookies:
+                try:
+                    # Convert dicts to the correct format for Playwright's add_cookies
+                    test_page.context.add_cookies([
+                        {
+                            "name": cookie["name"],
+                            "value": cookie["value"],
+                            "domain": cookie.get("domain", ""),
+                            "path": cookie.get("path", "/"),
+                            "expires": cookie.get("expires"),
+                            "httpOnly": cookie.get("httpOnly", False),
+                            "secure": cookie.get("secure", False),
+                            "sameSite": cookie.get("sameSite", "Lax"),
+                        }
+                        for cookie in valid_cookies
+                        if isinstance(cookie, dict) and "name" in cookie and "value" in cookie
+                    ])
+                    print(f"✅ 应用了 {len(valid_cookies)} 个有效cookies")
+                except Exception as e:
+                    print(f"⚠️ 应用cookies时出错: {e}")
+                    # 尝试使用原始cookies格式
+                    try:
+                        test_page.context.add_cookies([
+                            {
+                                "name": cookie["name"],
+                                "value": cookie["value"],
+                                "domain": cookie.get("domain", ""),
+                                "path": cookie.get("path", "/"),
+                                "expires": cookie.get("expires"),
+                                "httpOnly": cookie.get("httpOnly", False),
+                                "secure": cookie.get("secure", False),
+                                "sameSite": cookie.get("sameSite", "Lax"),
+                            }
+                            for cookie in cookies
+                            if isinstance(cookie, dict) and "name" in cookie and "value" in cookie
+                        ])
+                        print(f"✅ 使用原始格式应用了 {len(cookies)} 个cookies")
+                    except Exception as e2:
+                        print(f"❌ 无法应用cookies: {e2}")
+                        return False
+            else:
+                print("⚠️ 没有找到有效的cookies")
 
             # 访问邮箱网站
             test_page.goto(EMAIL_CHECK_URL)
@@ -257,7 +304,17 @@ class EmailLoginHelper:
         # 步骤3: 测试cookies
         print("\n📋 步骤3: 测试cookies...")
         if not self.test_saved_cookies():
-            print("⚠️ cookies测试失败，但已保存，可以在主程序中尝试使用")
+            print("⚠️ cookies测试失败，自动跳转至邮箱登录页面进行登录...")
+            if not self.page:
+                if self.browser:
+                    self.page = self.browser.new_page()
+                else:
+                    print("无法跳转登录页面，因为浏览器未初始化")
+                    return False
+            self.page.goto(EMAIL_CHECK_URL)
+            wait_with_message(3, "等待页面加载")
+        else:
+            print("✅ cookies测试成功")
 
         print("\n🎉 邮箱设置完成!")
         print(f"💾 cookies已保存到: {COOKIES_FILE}")

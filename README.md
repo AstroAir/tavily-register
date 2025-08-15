@@ -45,14 +45,17 @@ playwright install firefox
 1. **Set Email Prefix**
 
    Edit `src/tavily_register/config/settings.py`:
+
    ```python
    EMAIL_PREFIX = "your_prefix"  # Replace with your 2925.com email prefix
    ```
 
 2. **Set Up Email Login**
+
    ```bash
    python main.py
    ```
+
    Follow the prompts to complete 2925.com email login and save cookies.
 
 ### Usage
@@ -62,12 +65,13 @@ python main.py
 ```
 
 Choose operation mode:
+
 - **Intelligent Automation Mode** (Recommended): Efficient and stable automation process
 - **Test Mode**: Traditional approach for debugging and HTML information collection
 
 ## 📁 Project Structure
 
-```
+```txt
 tavily-register/
 ├── .github/                          # GitHub specific files
 │   ├── workflows/                    # CI/CD workflows

@@ -6,7 +6,7 @@ Based on deep HTML information analysis, using intelligent element detection
 and waiting mechanisms.
 """
 import time
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, Dict
 from playwright.sync_api import sync_playwright, Page, Browser, Playwright
 from ..config.settings import *
 from ..utils.helpers import generate_email, save_api_key
@@ -145,7 +145,7 @@ class IntelligentTavilyAutomation:
             self.log(f"⚠️ 浏览器关闭时出现错误（可忽略）: {e}", "DEBUG")
             pass
 
-    def smart_wait_for_element(self, element_config: dict, timeout: int = 30000) -> Tuple[Optional[Any], Optional[str]]:
+    def smart_wait_for_element(self, element_config: Dict[str, Any], timeout: int = 30000) -> Tuple[Optional[Any], Optional[str]]:
         """
         Wait intelligently for an element to appear using primary and fallback selectors.
 

@@ -6,10 +6,11 @@ Specialized tool for checking verification emails in 2925.com mailbox.
 """
 import re
 import time
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Sequence
 from playwright.sync_api import sync_playwright, Page, Browser, Playwright
+from playwright._impl._api_structures import SetCookieParam
 from ..config.settings import *
-from ..utils.helpers import load_cookies, wait_with_message
+from ..utils.helpers import load_cookies, wait_with_message, convert_cookies_to_playwright_format
 
 
 class EmailChecker:
@@ -96,7 +97,25 @@ class EmailChecker:
             cookies = load_cookies(COOKIES_FILE)
             if cookies:
                 print("📂 加载已保存的cookies...")
-                self.page.context.add_cookies(cookies)
+
+                # 准备cookies格式以供Playwright使用
+                valid_cookies = convert_cookies_to_playwright_format(cookies)
+
+                if valid_cookies:
+                    try:
+                        self.page.context.add_cookies(valid_cookies)
+                        print(f"✅ 应用了 {len(valid_cookies)} 个有效cookies")
+                    except Exception as e:
+                        print(f"⚠️ 应用cookies时出错: {e}")
+                        # 尝试使用原始cookies格式
+                        try:
+                            fallback_cookies = convert_cookies_to_playwright_format(cookies)
+                            self.page.context.add_cookies(fallback_cookies)
+                            print(f"✅ 使用原始格式应用了 {len(fallback_cookies)} 个cookies")
+                        except Exception as e2:
+                            print(f"❌ 无法应用cookies: {e2}")
+                else:
+                    print("⚠️ 没有找到有效的cookies")
 
                 # 刷新页面以应用cookies
                 print("🔄 刷新页面...")
@@ -381,7 +400,7 @@ class EmailChecker:
         except Exception as e:
             print(f"⚠️ 返回邮件列表失败: {e}")
 
-    def process_email_with_alias_check(self, email_info: dict, target_alias: str) -> Optional[str]:
+    def process_email_with_alias_check(self, email_info: Dict[str, Any], target_alias: str) -> Optional[str]:
         """处理邮件并验证别名"""
         try:
             original_text = email_info['text']
@@ -430,7 +449,7 @@ class EmailChecker:
             print(f"❌ 处理邮件失败: {e}")
             return None
 
-    def verify_email_alias_from_preview(self, email_info: dict, target_alias: str) -> bool:
+    def verify_email_alias_from_preview(self, email_info: Dict[str, Any], target_alias: str) -> bool:
         """从预览信息验证邮件别名（简单检查）"""
         try:
             # 在预览文本中查找目标别名
