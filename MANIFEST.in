@@ -1,0 +1,82 @@
+# MANIFEST.in - Controls what files are included in source distributions
+
+# Include essential project files
+include README.md
+include LICENSE
+include CONTRIBUTING.md
+include api_keys.md
+include pyproject.toml
+include uv.lock
+
+# Include documentation
+recursive-include docs *
+include mkdocs.yml
+
+# Include tests
+recursive-include tests *
+
+# Include scripts
+recursive-include scripts *
+
+# Include examples
+recursive-include examples *
+
+# Include GitHub workflows and configuration
+recursive-include .github *
+
+# Include configuration files
+include .bandit
+include .gitignore
+
+# Exclude compiled Python files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.pyd
+global-exclude __pycache__
+global-exclude *.so
+
+# Exclude development and build artifacts
+global-exclude .DS_Store
+global-exclude .coverage
+global-exclude .pytest_cache
+global-exclude .mypy_cache
+global-exclude .tox
+global-exclude .venv
+global-exclude venv
+global-exclude build
+global-exclude dist
+global-exclude *.egg-info
+
+# Exclude IDE files
+global-exclude .vscode
+global-exclude .idea
+global-exclude *.swp
+global-exclude *.swo
+
+# Exclude temporary files
+global-exclude *~
+global-exclude *.tmp
+global-exclude *.bak
+
+# Exclude log files
+global-exclude *.log
+
+# Exclude environment files (may contain secrets)
+exclude .env
+exclude .env.local
+exclude .env.production
+exclude .python-version
+
+# Exclude specific generated files
+exclude email_cookies.json
+exclude api_keys.md
+exclude coverage.xml
+exclude htmlcov
+exclude bandit-report.json
+exclude safety-report.json
+
+# Exclude main.py (it's in src/tavily_register/)
+exclude main.py
+
+# Exclude validation report
+exclude VALIDATION_REPORT.md

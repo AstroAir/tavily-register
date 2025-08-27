@@ -1,0 +1,313 @@
+name: Build Package
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # Validate package configuration
+  validate:
+    name: Validate Package Configuration
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install validation tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine check-manifest pyproject-metadata
+
+    - name: Validate pyproject.toml
+      run: |
+        python -c "
+        import tomllib
+        with open('pyproject.toml', 'rb') as f:
+            data = tomllib.load(f)
+        print('✓ pyproject.toml is valid TOML')
+        
+        # Check required fields
+        project = data.get('project', {})
+        required_fields = ['name', 'version', 'description', 'authors']
+        for field in required_fields:
+            if field in project:
+                print(f'✓ {field}: {project[field]}')
+            else:
+                raise ValueError(f'Missing required field: {field}')
+        "
+
+    - name: Check manifest
+      run: |
+        check-manifest --verbose
+
+    - name: Validate metadata
+      run: |
+        python -c "
+        from pyproject_metadata import StandardMetadata
+        metadata = StandardMetadata.from_pyproject_toml('pyproject.toml')
+        print(f'✓ Package name: {metadata.name}')
+        print(f'✓ Version: {metadata.version}')
+        print(f'✓ Description: {metadata.description}')
+        "
+
+  # Build source and wheel distributions
+  build:
+    name: Build Distributions
+    runs-on: ubuntu-latest
+    needs: validate
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for version detection
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build
+
+    - name: Build source distribution
+      run: |
+        python -m build --sdist
+
+    - name: Build wheel distribution
+      run: |
+        python -m build --wheel
+
+    - name: List built packages
+      run: |
+        ls -la dist/
+        echo "Built packages:"
+        for file in dist/*; do
+          echo "  $(basename "$file") ($(du -h "$file" | cut -f1))"
+        done
+
+    - name: Store build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-artifacts
+        path: dist/
+        retention-days: 30
+
+  # Validate built packages
+  validate-build:
+    name: Validate Built Packages
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-artifacts
+        path: dist/
+
+    - name: Install validation tools
+      run: |
+        pip install twine pkginfo wheel
+
+    - name: Check package integrity
+      run: |
+        twine check dist/*
+
+    - name: Inspect wheel contents
+      run: |
+        python -c "
+        import zipfile
+        import glob
+        
+        wheel_files = glob.glob('dist/*.whl')
+        for wheel_file in wheel_files:
+            print(f'\\nInspecting {wheel_file}:')
+            with zipfile.ZipFile(wheel_file, 'r') as wheel:
+                files = wheel.namelist()
+                print(f'  Total files: {len(files)}')
+                
+                # Check for Python files
+                py_files = [f for f in files if f.endswith('.py')]
+                print(f'  Python files: {len(py_files)}')
+                
+                # Check for metadata
+                metadata_files = [f for f in files if 'METADATA' in f or 'WHEEL' in f]
+                print(f'  Metadata files: {len(metadata_files)}')
+                
+                # List main directories
+                dirs = set(f.split('/')[0] for f in files if '/' in f)
+                print(f'  Main directories: {sorted(dirs)}')
+        "
+
+    - name: Inspect source distribution
+      run: |
+        python -c "
+        import tarfile
+        import glob
+        
+        sdist_files = glob.glob('dist/*.tar.gz')
+        for sdist_file in sdist_files:
+            print(f'\\nInspecting {sdist_file}:')
+            with tarfile.open(sdist_file, 'r:gz') as tar:
+                files = tar.getnames()
+                print(f'  Total files: {len(files)}')
+                
+                # Check for Python files
+                py_files = [f for f in files if f.endswith('.py')]
+                print(f'  Python files: {len(py_files)}')
+                
+                # Check for required files
+                required = ['pyproject.toml', 'README.md', 'LICENSE']
+                for req in required:
+                    found = any(req in f for f in files)
+                    print(f'  {req}: {\"✓\" if found else \"✗\"}')
+        "
+
+    - name: Extract and validate metadata
+      run: |
+        python -c "
+        import pkginfo
+        import glob
+        
+        # Check wheel metadata
+        wheel_files = glob.glob('dist/*.whl')
+        if wheel_files:
+            wheel = pkginfo.Wheel(wheel_files[0])
+            print('Wheel Metadata:')
+            print(f'  Name: {wheel.name}')
+            print(f'  Version: {wheel.version}')
+            print(f'  Summary: {wheel.summary}')
+            print(f'  Author: {wheel.author}')
+            print(f'  License: {wheel.license}')
+            print(f'  Requires Python: {wheel.requires_python}')
+            if wheel.requires_dist:
+                print(f'  Dependencies: {len(wheel.requires_dist)}')
+                for dep in wheel.requires_dist[:5]:  # Show first 5
+                    print(f'    - {dep}')
+        
+        # Check source metadata
+        sdist_files = glob.glob('dist/*.tar.gz')
+        if sdist_files:
+            sdist = pkginfo.SDist(sdist_files[0])
+            print(f'\\nSource Distribution Metadata:')
+            print(f'  Name: {sdist.name}')
+            print(f'  Version: {sdist.version}')
+            print(f'  Summary: {sdist.summary}')
+        "
+
+  # Test installation from built packages
+  test-install:
+    name: Test Installation
+    runs-on: ${{ matrix.os }}
+    needs: validate-build
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        
+    steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-artifacts
+        path: dist/
+
+    - name: Test wheel installation
+      run: |
+        # Install from wheel
+        pip install dist/*.whl
+        
+        # Test import
+        python -c "import tavily_register; print('✓ Package imported successfully')"
+        
+        # Test entry point
+        tavily-register --help
+        
+        # Uninstall
+        pip uninstall tavily-register -y
+
+    - name: Test source installation
+      run: |
+        # Install from source
+        pip install dist/*.tar.gz
+        
+        # Test import
+        python -c "import tavily_register; print('✓ Source package imported successfully')"
+        
+        # Test entry point
+        tavily-register --help
+
+  # Generate build report
+  build-report:
+    name: Generate Build Report
+    runs-on: ubuntu-latest
+    needs: [validate, build, validate-build, test-install]
+    if: always()
+    
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-artifacts
+        path: dist/
+
+    - name: Generate build summary
+      run: |
+        echo "# Build Report" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Build Status" >> $GITHUB_STEP_SUMMARY
+        echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Validation | ${{ needs.validate.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Package Validation | ${{ needs.validate-build.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Installation Test | ${{ needs.test-install.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -d "dist" ]; then
+          echo "## Built Packages" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          for file in dist/*; do
+            if [ -f "$file" ]; then
+              size=$(du -h "$file" | cut -f1)
+              name=$(basename "$file")
+              echo "| $name | $size |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+        fi
+
+    - name: Upload final artifacts
+      uses: actions/upload-artifact@v4
+      if: needs.build.result == 'success'
+      with:
+        name: tavily-register-packages
+        path: dist/
+        retention-days: 90

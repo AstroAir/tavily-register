@@ -1,0 +1,63 @@
+[bandit]
+# Bandit configuration file for security scanning
+
+# Test IDs to skip (comma-separated)
+skips = B101,B601
+
+# Test IDs to run (comma-separated, overrides skips)
+# tests = 
+
+# Paths to exclude from scanning
+exclude_dirs = /tests,/docs,/build,/dist,/.git,/.venv,/venv,/__pycache__
+
+# Confidence levels: LOW, MEDIUM, HIGH
+confidence = MEDIUM
+
+# Severity levels: LOW, MEDIUM, HIGH  
+severity = MEDIUM
+
+# Output format: csv,custom,html,json,screen,txt,xml,yaml
+format = txt
+
+# Recursively scan subdirectories
+recursive = true
+
+# Aggregate output by vulnerability type
+aggregate = vuln
+
+# Number of lines of code context to display
+context_lines = 3
+
+# Baseline file to compare against
+# baseline = bandit-baseline.json
+
+# Plugin blacklist (comma-separated)
+# blacklist_calls = 
+
+# Plugin whitelist (comma-separated)  
+# whitelist_calls =
+
+# Additional configuration for specific tests
+[bandit.assert_used]
+# Skip assert statements in test files
+skips = ['*test*.py', '*tests*.py']
+
+[bandit.hardcoded_password_string]
+# Skip hardcoded password detection for test data
+word_list = ['password', 'pass', 'passwd', 'pwd', 'secret', 'token']
+
+[bandit.hardcoded_password_funcarg]
+# Skip hardcoded password detection in function arguments for test functions
+skips = ['*test*.py', '*tests*.py']
+
+[bandit.hardcoded_password_default]
+# Skip hardcoded password detection in default arguments for test functions  
+skips = ['*test*.py', '*tests*.py']
+
+[bandit.request_without_timeout]
+# Allow requests without timeout in specific contexts
+skips = ['*test*.py']
+
+[bandit.subprocess_popen_with_shell_equals_true]
+# Allow shell=True in subprocess calls for specific use cases
+skips = ['scripts/*.py']

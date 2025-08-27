@@ -1,0 +1,251 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION_DEFAULT: "3.12"
+
+jobs:
+  # Code Quality and Security Checks
+  quality:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev,test]"
+
+    - name: Code formatting check (Black)
+      run: |
+        black --check --diff src/ tests/
+        
+    - name: Linting (Flake8)
+      run: |
+        flake8 src/ tests/ --max-line-length=88 --extend-ignore=E203,W503
+
+    - name: Type checking (MyPy)
+      run: |
+        mypy src/tavily_register/ --ignore-missing-imports
+
+    - name: Security scanning (Bandit)
+      run: |
+        pip install bandit[toml]
+        bandit -r src/ -f json -o bandit-report.json || true
+        bandit -r src/ -f txt
+
+    - name: Dependency vulnerability check (Safety)
+      run: |
+        pip install safety
+        safety check --json --output safety-report.json || true
+        safety check
+
+    - name: Upload security reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+
+  # Multi-platform Testing
+  test:
+    name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.12", "3.13"]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[test]"
+
+    - name: Install Playwright browsers
+      run: |
+        playwright install firefox --with-deps
+      
+    - name: Run unit tests
+      run: |
+        pytest tests/unit/ -v --tb=short --junitxml=junit-${{ matrix.os }}-${{ matrix.python-version }}.xml
+
+    - name: Run integration tests
+      run: |
+        pytest tests/integration/ -v --tb=short
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results-${{ matrix.os }}-${{ matrix.python-version }}
+        path: junit-*.xml
+
+  # Coverage Testing
+  coverage:
+    name: Coverage Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[test]"
+
+    - name: Install Playwright browsers
+      run: |
+        playwright install firefox --with-deps
+
+    - name: Run tests with coverage
+      run: |
+        pytest --cov=src/tavily_register --cov-report=xml --cov-report=html --cov-report=term-missing --cov-fail-under=80
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-reports
+        path: |
+          coverage.xml
+          htmlcov/
+
+  # Performance Testing
+  performance:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[test]"
+        pip install pytest-benchmark
+
+    - name: Install Playwright browsers
+      run: |
+        playwright install firefox --with-deps
+
+    - name: Run performance tests
+      run: |
+        pytest tests/ -k "performance or timing" --benchmark-only --benchmark-json=benchmark.json
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: benchmark.json
+
+  # Comprehensive Test Suite
+  comprehensive:
+    name: Comprehensive Test Suite
+    runs-on: ubuntu-latest
+    needs: [quality, test, coverage]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[test]"
+
+    - name: Install Playwright browsers
+      run: |
+        playwright install firefox --with-deps
+
+    - name: Run comprehensive test suite
+      run: |
+        python tests/run_comprehensive_tests.py
+
+    - name: Upload comprehensive test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: comprehensive-test-results
+        path: |
+          htmlcov/
+          coverage-*.json
+          test-results.json
+
+  # Test Results Summary
+  test-summary:
+    name: Test Results Summary
+    runs-on: ubuntu-latest
+    needs: [quality, test, coverage, performance, comprehensive]
+    if: always()
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+
+    - name: Display test summary
+      run: |
+        echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+        echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Code Quality | ${{ needs.quality.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Multi-platform Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Coverage Analysis | ${{ needs.coverage.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Performance Tests | ${{ needs.performance.result }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Comprehensive Suite | ${{ needs.comprehensive.result }} |" >> $GITHUB_STEP_SUMMARY
