@@ -10,9 +10,8 @@ from unittest.mock import Mock, patch
 from concurrent.futures import ThreadPoolExecutor
 
 from src.tavily_register.utils.helpers import generate_email, save_api_key
-from src.tavily_register.config.settings import get_config
+from src.tavily_register.config import settings
 from src.tavily_register.email.checker import EmailChecker
-from tests.fixtures.sample_data import SAMPLE_EMAILS, SAMPLE_CONFIGS
 
 
 class TestPerformanceBenchmarks:
@@ -36,7 +35,12 @@ class TestPerformanceBenchmarks:
         def load_config_multiple_times():
             configs = []
             for _ in range(50):
-                config = get_config()
+                # Test loading configuration values
+                config = {
+                    'browser_type': settings.BROWSER_TYPE,
+                    'headless': settings.HEADLESS,
+                    'timeout': settings.BROWSER_TIMEOUT
+                }
                 configs.append(config)
             return configs
 
@@ -49,7 +53,7 @@ class TestPerformanceBenchmarks:
         # Mock successful email check response
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = SAMPLE_EMAILS[0]
+        mock_response.json.return_value = {"email": "test@2925.com", "status": "success"}
         mock_get.return_value = mock_response
 
         checker = EmailChecker()

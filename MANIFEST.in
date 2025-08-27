@@ -4,9 +4,12 @@
 include README.md
 include LICENSE
 include CONTRIBUTING.md
-include api_keys.md
+include CHANGELOG.md
 include pyproject.toml
 include uv.lock
+
+# Include source package documentation
+recursive-include src *.md
 
 # Include documentation
 recursive-include docs *
@@ -69,7 +72,6 @@ exclude .python-version
 
 # Exclude specific generated files
 exclude email_cookies.json
-exclude api_keys.md
 exclude coverage.xml
 exclude htmlcov
 exclude bandit-report.json

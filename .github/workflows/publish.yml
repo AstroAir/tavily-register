@@ -205,7 +205,7 @@ jobs:
         
         ## 📋 Package Information
         
-        - **Python Support**: 3.12+
+        - **Python Support**: 3.11+
         - **Platforms**: Windows, macOS, Linux
         - **Dependencies**: See requirements in pyproject.toml
         
@@ -230,25 +230,15 @@ jobs:
         done
 
     - name: Create Release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Tavily Register v${{ steps.release_notes.outputs.VERSION }}
+        tag_name: ${{ github.ref_name }}
+        name: Tavily Register v${{ steps.release_notes.outputs.VERSION }}
         body_path: release_notes.md
         draft: false
         prerelease: ${{ contains(github.ref, '-') }}
-
-    - name: Upload Release Assets
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: dist/
-        asset_name: distributions
-        asset_content_type: application/zip
+        files: |
+          dist/*
 
   # Notify on completion
   notify:
