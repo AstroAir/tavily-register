@@ -52,9 +52,11 @@ class TavilyMainController:
                         if len(parts) >= 2:
                             # 解码payload部分
                             payload = parts[1]
-                            # 添加必要的padding
-                            payload += '=' * (4 - len(payload) % 4)
-                            decoded = base64.b64decode(payload)
+                            # Use URL-safe base64 decoding for JWT
+                            # Add padding only if it's missing
+                            if len(payload) % 4:
+                                payload += '=' * (4 - len(payload) % 4)
+                            decoded = base64.urlsafe_b64decode(payload)
                             user_info = json.loads(decoded.decode('utf-8'))
 
                             # 获取邮箱信息
