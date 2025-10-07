@@ -14,6 +14,15 @@ from src.tavily_register.config import settings
 from src.tavily_register.email.checker import EmailChecker
 
 
+def get_config():
+    """Helper function to get a config dictionary."""
+    return {
+        'browser_type': settings.BROWSER_TYPE,
+        'headless': settings.HEADLESS,
+        'timeout': settings.BROWSER_TIMEOUT
+    }
+
+
 class TestPerformanceBenchmarks:
     """Performance benchmark tests."""
 

@@ -107,7 +107,7 @@ class TestBasicWorkflow:
 
     def test_configuration_integration(self):
         """Test configuration integration in workflow."""
-        test_config = SAMPLE_CONFIGS["test_config"]
+        test_config = {k: str(v) for k, v in SAMPLE_CONFIGS["test_config"].items()}
         
         with patch.dict(os.environ, test_config):
             # Reload configuration to pick up test values
@@ -344,8 +344,8 @@ class TestAdvancedIntegrationScenarios:
         # Test configuration propagation
         test_config = {
             "EMAIL_PREFIX": "config_test",
-            "HEADLESS": True,
-            "WAIT_TIME_SHORT": 1
+            "HEADLESS": "True",
+            "WAIT_TIME_SHORT": "1"
         }
 
         with patch.dict(os.environ, test_config):

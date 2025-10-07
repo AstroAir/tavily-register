@@ -156,41 +156,45 @@ class IntelligentTavilyAutomation:
         Returns:
             Tuple[Optional[Any], Optional[str]]: The found element and the selector used, or (None, None).
         """
-        primary_selectors = element_config['primary']
-        fallback_selectors = element_config['fallback']
+        primary_selectors = element_config.get('primary', [])
+        fallback_selectors = element_config.get('fallback', [])
 
         # 首先尝试主要选择器
-        for selector in primary_selectors:
-            try:
-                self.log(f"🔍 尝试主要选择器: {selector}")
-                if self.page is None:
-                    self.log("❌ 页面未初始化")
-                    break
-                element = self.page.wait_for_selector(
-                    selector, timeout=timeout//len(primary_selectors))
-                if element:
-                    self.log(f"✅ 找到元素: {selector}")
-                    return element, selector
-            except Exception as e:
-                self.log(f"❌ 主要选择器失败: {selector} ({e})")
-                continue
+        if primary_selectors:
+            per_selector_timeout = timeout // len(primary_selectors)
+            for selector in primary_selectors:
+                try:
+                    self.log(f"🔍 尝试主要选择器: {selector}")
+                    if self.page is None:
+                        self.log("❌ 页面未初始化")
+                        break
+                    element = self.page.wait_for_selector(
+                        selector, timeout=per_selector_timeout)
+                    if element:
+                        self.log(f"✅ 找到元素: {selector}")
+                        return element, selector
+                except Exception as e:
+                    self.log(f"❌ 主要选择器失败: {selector} ({e})")
+                    continue
 
         # 如果主要选择器都失败，尝试备用选择器
         self.log("⚠️ 主要选择器都失败，尝试备用选择器...")
-        for selector in fallback_selectors:
-            try:
-                self.log(f"🔍 尝试备用选择器: {selector}")
-                if self.page is None:
-                    self.log("❌ 页面未初始化")
-                    break
-                element = self.page.wait_for_selector(
-                    selector, timeout=timeout//len(fallback_selectors))
-                if element:
-                    self.log(f"✅ 找到元素（备用）: {selector}")
-                    return element, selector
-            except Exception as e:
-                self.log(f"❌ 备用选择器失败: {selector} ({e})")
-                continue
+        if fallback_selectors:
+            per_selector_timeout = timeout // len(fallback_selectors)
+            for selector in fallback_selectors:
+                try:
+                    self.log(f"🔍 尝试备用选择器: {selector}")
+                    if self.page is None:
+                        self.log("❌ 页面未初始化")
+                        break
+                    element = self.page.wait_for_selector(
+                        selector, timeout=per_selector_timeout)
+                    if element:
+                        self.log(f"✅ 找到元素（备用）: {selector}")
+                        return element, selector
+                except Exception as e:
+                    self.log(f"❌ 备用选择器失败: {selector} ({e})")
+                    continue
 
         return None, None
 
