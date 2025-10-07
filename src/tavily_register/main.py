@@ -314,9 +314,8 @@ class TavilyMainController:
 
                 start_time = time.time()
 
-                # 运行传统注册流程 (需要实现run_registration方法)
-                # TODO: 实现TavilyAutomation.run_registration方法
-                if automation.navigate_to_signup():
+                # 运行传统注册流程
+                if automation.run_registration():
                     print("✅ 传统注册流程完成")
 
                     # 保存HTML日志

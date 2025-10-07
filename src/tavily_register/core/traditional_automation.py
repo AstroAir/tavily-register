@@ -614,6 +614,32 @@ class TavilyAutomation:
             print(f"❌ 填写密码失败: {e}")
             return False
 
+    def run_registration(self) -> bool:
+        """
+        运行完整的传统注册流程。
+        """
+        try:
+            print("🚀 开始传统注册流程...")
+
+            if not self.navigate_to_signup():
+                print("❌ 导航到注册页面失败")
+                return False
+
+            if not self.fill_registration_form():
+                print("❌ 填写注册表单失败")
+                return False
+
+            if not self.fill_password():
+                print("❌ 填写密码失败")
+                return False
+
+            print("🎉 传统注册流程完成!")
+            return True
+
+        except Exception as e:
+            print(f"❌ 传统注册流程失败: {e}")
+            return False
+
     def verify_email(self, verification_link: str) -> bool:
         """验证邮箱"""
         try:
