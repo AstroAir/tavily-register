@@ -468,6 +468,66 @@ class TestCompleteAutomationWorkflow:
         assert api_key is None
 
 
+class TestSmartWaitForElement:
+    """Test the smart_wait_for_element method."""
+
+    @pytest.fixture
+    def mock_automation(self):
+        """Create automation instance with mocked page."""
+        automation = IntelligentTavilyAutomation()
+        automation.page = Mock()
+        return automation
+
+    def test_smart_wait_for_element_with_empty_selectors(self, mock_automation):
+        """Test that smart_wait_for_element handles empty selector lists gracefully."""
+        element_config = {
+            'primary': [],
+            'fallback': []
+        }
+
+        # This call should not raise a ZeroDivisionError
+        result, selector = mock_automation.smart_wait_for_element(element_config)
+
+        assert result is None
+        assert selector is None
+        # Verify that wait_for_selector was not called
+        mock_automation.page.wait_for_selector.assert_not_called()
+
+    def test_smart_wait_for_element_with_empty_primary_selectors(self, mock_automation):
+        """Test that smart_wait_for_element works with an empty primary list."""
+        # Mock the page to return an element for the fallback selector
+        mock_element = Mock()
+        mock_automation.page.wait_for_selector.return_value = mock_element
+
+        element_config = {
+            'primary': [],
+            'fallback': ['#fallback-selector']
+        }
+
+        result, selector = mock_automation.smart_wait_for_element(element_config)
+
+        assert result == mock_element
+        assert selector == '#fallback-selector'
+        mock_automation.page.wait_for_selector.assert_called_once_with('#fallback-selector', timeout=30000)
+
+    def test_smart_wait_for_element_with_empty_fallback_selectors(self, mock_automation):
+        """Test that smart_wait_for_element works with an empty fallback list."""
+        # Mock the page to return an element for the primary selector
+        mock_element = Mock()
+        mock_automation.page.wait_for_selector.return_value = mock_element
+
+        element_config = {
+            'primary': ['#primary-selector'],
+            'fallback': []
+        }
+
+        result, selector = mock_automation.smart_wait_for_element(element_config)
+
+        assert result == mock_element
+        assert selector == '#primary-selector'
+        mock_automation.page.wait_for_selector.assert_called_once_with('#primary-selector', timeout=30000)
+
+
 class TestBoundaryConditions:
     """Test boundary conditions and edge cases."""
 
