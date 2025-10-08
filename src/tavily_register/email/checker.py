@@ -14,13 +14,20 @@ from ..utils.helpers import load_cookies, wait_with_message, convert_cookies_to_
 
 
 class EmailChecker:
-    def __init__(self) -> None:
-        self.playwright: Optional[Playwright] = None
-        self.browser: Optional[Browser] = None
-        self.page: Optional[Page] = None
+    def __init__(self, page: Optional[Page] = None) -> None:
+        self.page: Optional[Page] = page
+        self._own_browser: bool = page is None
+        if self._own_browser:
+            self.playwright: Optional[Playwright] = None
+            self.browser: Optional[Browser] = None
+        else:
+            self.playwright = None
+            self.browser = None
 
     def start_browser(self, headless: Optional[bool] = None) -> None:
         """启动浏览器"""
+        if not self._own_browser:
+            return
         self.playwright = sync_playwright().start()
 
         # 使用传入的headless参数，如果没有则使用配置文件默认值
@@ -71,6 +78,8 @@ class EmailChecker:
 
     def close_browser(self) -> None:
         """关闭浏览器"""
+        if not self._own_browser:
+            return
         if self.page:
             self.page.close()
         if self.browser:

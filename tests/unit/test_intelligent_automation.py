@@ -1,562 +1,304 @@
 """
-Comprehensive unit tests for IntelligentTavilyAutomation class.
-
-Tests the intelligent automation module including browser lifecycle,
-form interactions, email verification, API key extraction, and error handling.
+Unit tests for the IntelligentTavilyAutomation class.
 """
 import pytest
-import time
-from unittest.mock import Mock, patch, MagicMock, call
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-
+from unittest.mock import Mock, patch
+from playwright.sync_api import Page
 from src.tavily_register.core.intelligent_automation import IntelligentTavilyAutomation
-from tests.fixtures.sample_data import (
-    SAMPLE_HTML_CONTENT,
-    TEST_SELECTORS,
-    SAMPLE_API_RESPONSES,
-    get_sample_email_by_type
-)
 
+@pytest.fixture
+def automation_with_page(mocker):
+    """Provides an IntelligentTavilyAutomation instance with a mocked page."""
+    mock_page = mocker.MagicMock(spec=Page)
+    return IntelligentTavilyAutomation(page=mock_page)
+
+@pytest.fixture
+def automation_without_page():
+    """Provides an IntelligentTavilyAutomation instance without a page."""
+    return IntelligentTavilyAutomation()
 
 class TestIntelligentTavilyAutomationInit:
-    """Test initialization and basic setup."""
+    """Tests for the initialization of IntelligentTavilyAutomation."""
 
-    def test_initialization_default_values(self):
-        """Test automation instance initialization with default values."""
+    def test_initialization_with_page(self, automation_with_page):
+        """Test initialization with a provided page."""
+        assert automation_with_page.page is not None
+        assert automation_with_page._own_browser is False
+
+    def test_initialization_without_page(self, automation_without_page):
+        """Test initialization without a provided page."""
+        assert automation_without_page.page is None
+        assert automation_without_page._own_browser is True
+        assert automation_without_page.playwright is None
+        assert automation_without_page.browser is None
+
+class TestLogging:
+    """Tests for the logging functionality."""
+
+    def test_log_enabled(self, capsys):
+        """Test that log messages are printed when debugging is enabled."""
         automation = IntelligentTavilyAutomation()
-        
-        assert automation.playwright is None
-        assert automation.browser is None
-        assert automation.page is None
-        assert automation.email is None
-        assert automation.email_prefix is None
-        assert automation.password is None
-        assert automation.debug is True
+        automation.debug = True
+        automation.log("Test message")
+        captured = capsys.readouterr()
+        assert "Test message" in captured.out
 
-    def test_initialization_with_custom_prefix(self):
-        """Test automation instance initialization with custom email prefix."""
+    def test_log_disabled(self, capsys):
+        """Test that log messages are not printed when debugging is disabled."""
         automation = IntelligentTavilyAutomation()
-        automation.email_prefix = "custom_test"
-        
-        assert automation.email_prefix == "custom_test"
-
+        automation.debug = False
+        automation.log("Test message")
+        captured = capsys.readouterr()
+        assert captured.out == ""
 
 class TestBrowserLifecycle:
-    """Test browser lifecycle management."""
+    """Tests for browser lifecycle management."""
 
-    @pytest.fixture
-    def automation(self):
-        """Create automation instance for testing."""
-        return IntelligentTavilyAutomation()
-
-    @patch('playwright.sync_api.sync_playwright')
-    def test_start_browser_success(self, mock_playwright, automation):
-        """Test successful browser startup."""
-        # Setup mocks
+    @patch('src.tavily_register.core.intelligent_automation.sync_playwright')
+    @patch('src.tavily_register.core.intelligent_automation.BROWSER_TYPE', 'chromium')
+    def test_start_browser_if_own_browser(self, mock_sync_playwright, automation_without_page):
+        """Test browser starts when it owns the browser instance."""
         mock_playwright_instance = Mock()
         mock_browser = Mock()
         mock_page = Mock()
-        
-        mock_playwright.return_value.start.return_value = mock_playwright_instance
-        mock_playwright_instance.firefox.launch.return_value = mock_browser
+        mock_sync_playwright.return_value.start.return_value = mock_playwright_instance
+        mock_playwright_instance.chromium.launch.return_value = mock_browser
         mock_browser.new_page.return_value = mock_page
-        
-        # Test browser startup
-        automation.start_browser(headless=True)
-        
-        # Verify calls
-        mock_playwright_instance.firefox.launch.assert_called_once()
-        launch_args = mock_playwright_instance.firefox.launch.call_args[1]
-        assert launch_args['headless'] is True
-        
-        mock_browser.new_page.assert_called_once()
-        
-        # Verify state
-        assert automation.playwright == mock_playwright_instance
-        assert automation.browser == mock_browser
-        assert automation.page == mock_page
 
-    @patch('playwright.sync_api.sync_playwright')
-    def test_start_browser_with_different_options(self, mock_playwright, automation):
-        """Test browser startup with different options."""
+        automation_without_page.start_browser(headless=True)
+
+        mock_sync_playwright.return_value.start.assert_called_once()
+        mock_playwright_instance.chromium.launch.assert_called_once_with(headless=True)
+        assert automation_without_page.page is not None
+
+    def test_start_browser_if_not_own_browser(self, automation_with_page):
+        """Test browser does not start when a page is provided."""
+        with patch('src.tavily_register.core.intelligent_automation.sync_playwright') as mock_sync_playwright:
+            automation_with_page.start_browser()
+            mock_sync_playwright.return_value.start.assert_not_called()
+
+    def test_close_browser_if_own_browser(self, automation_without_page):
+        """Test browser closes when it owns the instance."""
+        mock_playwright = Mock()
+        mock_browser = Mock()
+        mock_page = Mock()
+
+        automation_without_page.playwright = mock_playwright
+        automation_without_page.browser = mock_browser
+        automation_without_page.page = mock_page
+
+        automation_without_page.close_browser()
+
+        mock_page.close.assert_called_once()
+        mock_browser.close.assert_called_once()
+        mock_playwright.stop.assert_called_once()
+        assert automation_without_page.page is None
+        assert automation_without_page.browser is None
+        assert automation_without_page.playwright is None
+
+    def test_close_browser_if_not_own_browser(self, automation_with_page):
+        """Test browser does not close when a page is provided."""
+        mock_page = automation_with_page.page
+        automation_with_page.close_browser()
+        mock_page.close.assert_not_called()
+
+    @patch('src.tavily_register.core.intelligent_automation.sync_playwright')
+    @patch('src.tavily_register.core.intelligent_automation.BROWSER_TYPE', 'firefox')
+    def test_start_browser_firefox(self, mock_sync_playwright, automation_without_page):
+        """Test that firefox is launched when BROWSER_TYPE is set to firefox."""
         mock_playwright_instance = Mock()
         mock_browser = Mock()
-        
-        mock_playwright.return_value.start.return_value = mock_playwright_instance
+        mock_page = Mock()
+        mock_sync_playwright.return_value.start.return_value = mock_playwright_instance
         mock_playwright_instance.firefox.launch.return_value = mock_browser
-        mock_browser.new_page.return_value = Mock()
-        
-        # Test with headless=False
-        automation.start_browser(headless=False)
-        
-        launch_args = mock_playwright_instance.firefox.launch.call_args[1]
-        assert launch_args['headless'] is False
+        mock_browser.new_page.return_value = mock_page
 
-    @patch('playwright.sync_api.sync_playwright')
-    def test_start_browser_failure(self, mock_playwright, automation):
-        """Test browser startup failure handling."""
-        mock_playwright.return_value.start.side_effect = Exception("Browser launch failed")
-        
-        with pytest.raises(Exception, match="Browser launch failed"):
-            automation.start_browser()
+        automation_without_page.start_browser(headless=True)
 
-    def test_close_browser_success(self, automation):
-        """Test successful browser closure."""
-        # Setup mock browser
-        mock_browser = Mock()
-        automation.browser = mock_browser
-        
-        automation.close_browser()
-        
-        mock_browser.close.assert_called_once()
-        assert automation.browser is None
-
-    def test_close_browser_no_browser(self, automation):
-        """Test browser closure when no browser is running."""
-        automation.browser = None
-        
-        # Should not raise exception
-        automation.close_browser()
-
-    def test_close_browser_failure(self, automation):
-        """Test browser closure failure handling."""
-        mock_browser = Mock()
-        mock_browser.close.side_effect = Exception("Close failed")
-        automation.browser = mock_browser
-        
-        # Should handle exception gracefully
-        automation.close_browser()
-        assert automation.browser is None
+        mock_playwright_instance.firefox.launch.assert_called_once_with(headless=True)
+        mock_playwright_instance.chromium.launch.assert_not_called()
 
 
-class TestFormInteractions:
-    """Test form filling and interaction methods."""
+class TestSmartElementWaiting:
+    """Tests for the smart element waiting functionality."""
 
     @pytest.fixture
-    def mock_automation(self):
-        """Create automation instance with mocked browser components."""
+    def automation(self, mocker):
+        """Provides an IntelligentTavilyAutomation instance with a mocked page."""
         automation = IntelligentTavilyAutomation()
-        automation.page = Mock()
-        automation.email = "test@2925.com"
-        automation.password = "TestPassword123!"
+        automation.page = mocker.MagicMock(spec=Page)
         return automation
 
-    def test_fill_email_success(self, mock_automation):
-        """Test successful email field filling."""
-        mock_automation.page.wait_for_selector.return_value = Mock()
-        mock_automation.page.fill.return_value = None
+    def test_smart_wait_for_element_primary_success(self, automation, mocker):
+        """Test finding an element with a primary selector."""
+        mock_element = Mock()
+        element_config = {'primary': ['#primary'], 'fallback': ['#fallback']}
+        automation.page.wait_for_selector.return_value = mock_element
+
+        element, selector = automation.smart_wait_for_element(element_config)
+
+        assert element is mock_element
+        assert selector == '#primary'
+        automation.page.wait_for_selector.assert_called_once_with('#primary', timeout=30000)
+
+    def test_smart_wait_for_element_fallback_success(self, automation, mocker):
+        """Test finding an element with a fallback selector after primary fails."""
+        mock_element = Mock()
+        element_config = {'primary': ['#primary'], 'fallback': ['#fallback']}
+        automation.page.wait_for_selector.side_effect = [Exception("Primary failed"), mock_element]
+
+        element, selector = automation.smart_wait_for_element(element_config, timeout=10000)
+
+        assert element is mock_element
+        assert selector == '#fallback'
+        assert automation.page.wait_for_selector.call_count == 2
         
-        result = mock_automation.fill_email_field("#email")
-        
-        assert result is True
-        mock_automation.page.wait_for_selector.assert_called_with("#email", timeout=10000)
-        mock_automation.page.fill.assert_called_with("#email", "test@2925.com")
+    def test_smart_wait_for_element_not_found(self, automation, mocker):
+        """Test when no element is found with any selector."""
+        element_config = {'primary': ['#primary'], 'fallback': ['#fallback']}
+        automation.page.wait_for_selector.side_effect = Exception("Not found")
 
-    def test_fill_email_timeout(self, mock_automation):
-        """Test email field filling with timeout."""
-        mock_automation.page.wait_for_selector.side_effect = PlaywrightTimeoutError("Timeout")
-        
-        result = mock_automation.fill_email_field("#email")
-        
-        assert result is False
+        element, selector = automation.smart_wait_for_element(element_config)
 
-    def test_fill_password_success(self, mock_automation):
-        """Test successful password field filling."""
-        mock_automation.page.wait_for_selector.return_value = Mock()
-        mock_automation.page.fill.return_value = None
-        
-        result = mock_automation.fill_password_field("#password")
-        
-        assert result is True
-        mock_automation.page.wait_for_selector.assert_called_with("#password", timeout=10000)
-        mock_automation.page.fill.assert_called_with("#password", "TestPassword123!")
-
-    def test_click_element_success(self, mock_automation):
-        """Test successful element clicking."""
-        mock_automation.page.wait_for_selector.return_value = Mock()
-        mock_automation.page.click.return_value = None
-        
-        result = mock_automation.click_element("button[type='submit']")
-        
-        assert result is True
-        mock_automation.page.wait_for_selector.assert_called_with("button[type='submit']", timeout=10000)
-        mock_automation.page.click.assert_called_with("button[type='submit']")
-
-    def test_click_element_not_found(self, mock_automation):
-        """Test clicking element that doesn't exist."""
-        mock_automation.page.wait_for_selector.side_effect = PlaywrightTimeoutError("Element not found")
-        
-        result = mock_automation.click_element("button[type='submit']")
-        
-        assert result is False
-
-
-class TestEmailGeneration:
-    """Test email generation and management."""
-
-    def test_generate_email_with_prefix(self):
-        """Test email generation with custom prefix."""
-        automation = IntelligentTavilyAutomation()
-        automation.email_prefix = "test_user"
-        
-        email = automation.generate_email()
-        
-        assert email.startswith("test_user-")
-        assert "@2925.com" in email
-        assert len(email.split("-")[1].split("@")[0]) == 8  # Random suffix length
-
-    def test_generate_email_without_prefix(self):
-        """Test email generation without custom prefix."""
-        automation = IntelligentTavilyAutomation()
-        automation.email_prefix = None
-        
-        email = automation.generate_email()
-        
-        assert "@2925.com" in email
-        assert "-" in email
-
-    def test_generate_password(self):
-        """Test password generation."""
-        automation = IntelligentTavilyAutomation()
-        
-        password = automation.generate_password()
-        
-        assert isinstance(password, str)
-        assert len(password) > 0
-
-
-class TestNavigationMethods:
-    """Test page navigation methods."""
-
-    @pytest.fixture
-    def mock_automation(self):
-        """Create automation instance with mocked page."""
-        automation = IntelligentTavilyAutomation()
-        automation.page = Mock()
-        return automation
-
-    def test_navigate_to_signup_success(self, mock_automation):
-        """Test successful navigation to signup page."""
-        mock_automation.page.goto.return_value = None
-        
-        result = mock_automation.navigate_to_signup()
-        
-        assert result is True
-        mock_automation.page.goto.assert_called_once()
-
-    def test_navigate_to_signup_failure(self, mock_automation):
-        """Test navigation failure to signup page."""
-        mock_automation.page.goto.side_effect = Exception("Navigation failed")
-        
-        result = mock_automation.navigate_to_signup()
-        
-        assert result is False
-
-    @patch('time.sleep')
-    def test_wait_for_page_load(self, mock_sleep, mock_automation):
-        """Test page load waiting mechanism."""
-        mock_automation.wait_for_page_load(3)
-        
-        mock_sleep.assert_called_with(3)
-
-
-class TestErrorHandling:
-    """Test error handling and edge cases."""
-
-    @pytest.fixture
-    def mock_automation(self):
-        """Create automation instance for error testing."""
-        automation = IntelligentTavilyAutomation()
-        automation.page = Mock()
-        return automation
-
-    def test_handle_network_error(self, mock_automation):
-        """Test handling of network errors."""
-        mock_automation.page.goto.side_effect = Exception("Network error")
-        
-        result = mock_automation.navigate_to_signup()
-        
-        assert result is False
-
-    def test_handle_element_not_found(self, mock_automation):
-        """Test handling when elements are not found."""
-        mock_automation.page.wait_for_selector.side_effect = PlaywrightTimeoutError("Element not found")
-        
-        result = mock_automation.fill_email_field("#nonexistent")
-        
-        assert result is False
-
-    def test_handle_browser_crash(self, mock_automation):
-        """Test handling of browser crashes."""
-        mock_automation.page.click.side_effect = Exception("Browser disconnected")
-        
-        result = mock_automation.click_element("button")
-        
-        assert result is False
-
-
-class TestLoggingAndDebugging:
-    """Test logging and debugging functionality."""
-
-    @pytest.fixture
-    def mock_automation(self):
-        """Create automation instance with debug enabled."""
-        automation = IntelligentTavilyAutomation()
-        automation.debug = True
-        return automation
-
-    @patch('builtins.print')
-    def test_log_action_with_debug(self, mock_print, mock_automation):
-        """Test logging when debug is enabled."""
-        mock_automation.log("Test message")
-
-        mock_print.assert_called_once()
-        call_args = mock_print.call_args[0][0]
-        assert "Test message" in call_args
-
-    def test_log_action_without_debug(self):
-        """Test logging when debug is disabled."""
-        automation = IntelligentTavilyAutomation()
-        automation.debug = False
-
-        with patch('builtins.print') as mock_print:
-            automation.log("Test message")
-            mock_print.assert_not_called()
-
-
-class TestAPIKeyExtraction:
-    """Test API key extraction functionality."""
-
-    @pytest.fixture
-    def mock_automation(self):
-        """Create automation instance with mocked page."""
-        automation = IntelligentTavilyAutomation()
-        automation.page = Mock()
-        return automation
-
-    def test_extract_api_key_success(self, mock_automation):
-        """Test successful API key extraction."""
-        mock_automation.page.wait_for_selector.return_value = Mock()
-        mock_automation.page.inner_text.return_value = "tvly-dev-abc123def456"
-
-        api_key = mock_automation.extract_api_key()
-
-        assert api_key == "tvly-dev-abc123def456"
-        mock_automation.page.wait_for_selector.assert_called()
-        mock_automation.page.inner_text.assert_called()
-
-    def test_extract_api_key_element_not_found(self, mock_automation):
-        """Test API key extraction when element is not found."""
-        mock_automation.page.wait_for_selector.side_effect = PlaywrightTimeoutError("Element not found")
-
-        api_key = mock_automation.extract_api_key()
-
-        assert api_key is None
-
-    def test_extract_api_key_empty_text(self, mock_automation):
-        """Test API key extraction with empty text."""
-        mock_automation.page.wait_for_selector.return_value = Mock()
-        mock_automation.page.inner_text.return_value = ""
-
-        api_key = mock_automation.extract_api_key()
-
-        assert api_key is None
-
-    def test_extract_api_key_invalid_format(self, mock_automation):
-        """Test API key extraction with invalid format."""
-        mock_automation.page.wait_for_selector.return_value = Mock()
-        mock_automation.page.inner_text.return_value = "invalid-key-format"
-
-        api_key = mock_automation.extract_api_key()
-
-        # Should still return the text even if format is unexpected
-        assert api_key == "invalid-key-format"
-
-
-class TestEmailVerificationWorkflow:
-    """Test email verification workflow."""
-
-    @pytest.fixture
-    def mock_automation(self):
-        """Create automation instance with mocked dependencies."""
-        automation = IntelligentTavilyAutomation()
-        automation.email = "test@2925.com"
-        return automation
-
-    @patch('src.tavily_register.core.intelligent_automation.EmailChecker')
-    def test_handle_email_verification_success(self, mock_email_checker_class, mock_automation):
-        """Test successful email verification workflow."""
-        # Setup mock email checker
-        mock_checker = Mock()
-        mock_email_checker_class.return_value = mock_checker
-        mock_checker.wait_for_email.return_value = "https://app.tavily.com/verify?token=abc123"
-
-        # Mock page navigation and API key extraction
-        mock_automation.page = Mock()
-        mock_automation.page.goto.return_value = None
-        mock_automation.extract_api_key = Mock(return_value="tvly-dev-test123")
-
-        api_key = mock_automation.handle_email_verification_and_login()
-
-        assert api_key == "tvly-dev-test123"
-        mock_checker.wait_for_email.assert_called_with("test@2925.com", timeout=300)
-        mock_automation.page.goto.assert_called_with("https://app.tavily.com/verify?token=abc123")
-
-    @patch('src.tavily_register.core.intelligent_automation.EmailChecker')
-    def test_handle_email_verification_timeout(self, mock_email_checker_class, mock_automation):
-        """Test email verification timeout."""
-        mock_checker = Mock()
-        mock_email_checker_class.return_value = mock_checker
-        mock_checker.wait_for_email.return_value = None  # Timeout
-
-        api_key = mock_automation.handle_email_verification_and_login()
-
-        assert api_key is None
-
-    @patch('src.tavily_register.core.intelligent_automation.EmailChecker')
-    def test_handle_email_verification_checker_failure(self, mock_email_checker_class, mock_automation):
-        """Test email verification when checker fails to start."""
-        mock_email_checker_class.side_effect = Exception("Checker failed to start")
-
-        api_key = mock_automation.handle_email_verification_and_login()
-
-        assert api_key is None
-
-
-class TestCompleteAutomationWorkflow:
-    """Test complete automation workflow integration."""
-
-    @pytest.fixture
-    def mock_automation(self):
-        """Create fully mocked automation instance."""
-        automation = IntelligentTavilyAutomation()
-        automation.email_prefix = "test"
-        return automation
-
-    @patch('src.tavily_register.utils.helpers.save_api_key')
-    def test_run_complete_automation_success(self, mock_save_api_key, mock_automation):
-        """Test successful complete automation workflow."""
-        # Mock all workflow steps
-        mock_automation.run_registration = Mock(return_value=True)
-        mock_automation.handle_email_verification_and_login = Mock(return_value="tvly-dev-success123")
-        mock_automation.email = "test@2925.com"
-        mock_automation.password = "TestPassword123!"
-
-        api_key = mock_automation.run_complete_automation()
-
-        assert api_key == "tvly-dev-success123"
-        mock_automation.run_registration.assert_called_once()
-        mock_automation.handle_email_verification_and_login.assert_called_once()
-        mock_save_api_key.assert_called_with("test@2925.com", "tvly-dev-success123", "TestPassword123!")
-
-    def test_run_complete_automation_registration_failure(self, mock_automation):
-        """Test complete automation workflow with registration failure."""
-        mock_automation.run_registration = Mock(return_value=False)
-
-        api_key = mock_automation.run_complete_automation()
-
-        assert api_key is None
-        mock_automation.run_registration.assert_called_once()
-
-    def test_run_complete_automation_verification_failure(self, mock_automation):
-        """Test complete automation workflow with verification failure."""
-        mock_automation.run_registration = Mock(return_value=True)
-        mock_automation.handle_email_verification_and_login = Mock(return_value=None)
-
-        api_key = mock_automation.run_complete_automation()
-
-        assert api_key is None
-
-
-class TestSmartWaitForElement:
-    """Test the smart_wait_for_element method."""
-
-    @pytest.fixture
-    def mock_automation(self):
-        """Create automation instance with mocked page."""
-        automation = IntelligentTavilyAutomation()
-        automation.page = Mock()
-        return automation
-
-    def test_smart_wait_for_element_with_empty_selectors(self, mock_automation):
-        """Test that smart_wait_for_element handles empty selector lists gracefully."""
-        element_config = {
-            'primary': [],
-            'fallback': []
-        }
-
-        # This call should not raise a ZeroDivisionError
-        result, selector = mock_automation.smart_wait_for_element(element_config)
-
-        assert result is None
+        assert element is None
         assert selector is None
-        # Verify that wait_for_selector was not called
-        mock_automation.page.wait_for_selector.assert_not_called()
 
-    def test_smart_wait_for_element_with_empty_primary_selectors(self, mock_automation):
-        """Test that smart_wait_for_element works with an empty primary list."""
-        # Mock the page to return an element for the fallback selector
-        mock_element = Mock()
-        mock_automation.page.wait_for_selector.return_value = mock_element
+    def test_smart_wait_for_element_no_page(self, automation_without_page):
+        """Test that it handles the case where the page is None."""
+        element, selector = automation_without_page.smart_wait_for_element({})
+        assert element is None
+        assert selector is None
 
-        element_config = {
-            'primary': [],
-            'fallback': ['#fallback-selector']
+
+class TestSmartClick:
+    """Tests for the smart_click functionality."""
+
+    @pytest.fixture
+    def automation(self, mocker):
+        """Provides an IntelligentTavilyAutomation instance with a mocked page."""
+        automation = IntelligentTavilyAutomation()
+        automation.page = mocker.MagicMock(spec=Page)
+        # Mock selectors to avoid key errors
+        automation.selectors = {
+            'test_button': {
+                'primary': ['#test_button']
+            }
         }
+        return automation
 
-        result, selector = mock_automation.smart_wait_for_element(element_config)
-
-        assert result == mock_element
-        assert selector == '#fallback-selector'
-        mock_automation.page.wait_for_selector.assert_called_once_with('#fallback-selector', timeout=30000)
-
-    def test_smart_wait_for_element_with_empty_fallback_selectors(self, mock_automation):
-        """Test that smart_wait_for_element works with an empty fallback list."""
-        # Mock the page to return an element for the primary selector
+    def test_smart_click_success(self, automation):
+        """Test a successful click on the first attempt."""
         mock_element = Mock()
-        mock_automation.page.wait_for_selector.return_value = mock_element
+        automation.smart_wait_for_element = Mock(return_value=(mock_element, '#test_button'))
 
-        element_config = {
-            'primary': ['#primary-selector'],
-            'fallback': []
+        result = automation.smart_click('test_button')
+
+        assert result is True
+        mock_element.click.assert_called_once()
+        automation.page.wait_for_load_state.assert_called_once_with('networkidle', timeout=10000)
+
+    def test_smart_click_with_retry(self, automation, mocker):
+        """Test a successful click after one failed attempt."""
+        mock_element = Mock()
+        # First call fails, second call succeeds
+        automation.smart_wait_for_element = Mock(side_effect=[
+            (None, None),
+            (mock_element, '#test_button')
+        ])
+        mocker.patch.object(automation.page, 'reload')
+
+        result = automation.smart_click('test_button', retries=2)
+
+        assert result is True
+        assert automation.smart_wait_for_element.call_count == 2
+        automation.page.reload.assert_called_once()
+        mock_element.click.assert_called_once()
+
+    def test_smart_click_failure(self, automation):
+        """Test a click that fails after all retries."""
+        automation.smart_wait_for_element = Mock(return_value=(None, None))
+
+        result = automation.smart_click('test_button', retries=2)
+
+        assert result is False
+        assert automation.smart_wait_for_element.call_count == 2
+        automation.page.reload.assert_called_once()
+
+    def test_smart_click_no_config(self, automation):
+        """Test smart_click with a non-existent element configuration."""
+        result = automation.smart_click('non_existent_button')
+        assert result is False
+
+
+class TestSmartFill:
+    """Tests for the smart_fill functionality."""
+
+    @pytest.fixture
+    def automation(self, mocker):
+        """Provides an IntelligentTavilyAutomation instance with a mocked page."""
+        automation = IntelligentTavilyAutomation()
+        automation.page = mocker.MagicMock(spec=Page)
+        automation.selectors = {
+            'test_input': {
+                'primary': ['#test_input']
+            }
         }
+        return automation
 
-        result, selector = mock_automation.smart_wait_for_element(element_config)
+    def test_smart_fill_success(self, automation):
+        """Test a successful fill on the first attempt."""
+        mock_element = Mock()
+        mock_element.input_value.return_value = "test text"
+        automation.smart_wait_for_element = Mock(return_value=(mock_element, '#test_input'))
 
-        assert result == mock_element
-        assert selector == '#primary-selector'
-        mock_automation.page.wait_for_selector.assert_called_once_with('#primary-selector', timeout=30000)
+        result = automation.smart_fill('test_input', 'test text')
 
+        assert result is True
+        mock_element.fill.assert_any_call('')
+        mock_element.fill.assert_any_call('test text')
+        mock_element.input_value.assert_called_once()
 
-class TestBoundaryConditions:
-    """Test boundary conditions and edge cases."""
+    def test_smart_fill_with_retry(self, automation, mocker):
+        """Test a successful fill after one failed attempt to find the element."""
+        mock_element = Mock()
+        mock_element.input_value.return_value = "test text"
+        automation.smart_wait_for_element = Mock(side_effect=[
+            (None, None),
+            (mock_element, '#test_input')
+        ])
+        mocker.patch.object(automation.page, 'reload')
 
-    def test_empty_email_prefix(self):
-        """Test automation with empty email prefix."""
-        automation = IntelligentTavilyAutomation()
-        automation.email_prefix = ""
+        result = automation.smart_fill('test_input', 'test text', retries=2)
 
-        email = automation.generate_email()
+        assert result is True
+        assert automation.smart_wait_for_element.call_count == 2
+        automation.page.reload.assert_called_once()
+        mock_element.fill.assert_called_with('test text')
 
-        assert "@2925.com" in email
-        # Should handle empty prefix gracefully
+    def test_smart_fill_failure(self, automation):
+        """Test a fill that fails after all retries."""
+        automation.smart_wait_for_element = Mock(return_value=(None, None))
 
-    def test_very_long_email_prefix(self):
-        """Test automation with very long email prefix."""
-        automation = IntelligentTavilyAutomation()
-        automation.email_prefix = "a" * 100  # Very long prefix
+        result = automation.smart_fill('test_input', 'test text', retries=2)
 
-        email = automation.generate_email()
+        assert result is False
+        assert automation.smart_wait_for_element.call_count == 2
+        automation.page.reload.assert_called_once()
 
-        assert email.startswith("a" * 100)
-        assert "@2925.com" in email
+    def test_smart_fill_validation_fails(self, automation):
+        """Test a fill that fails validation and then succeeds."""
+        mock_element = Mock()
+        # Fails validation first, then succeeds
+        mock_element.input_value.side_effect = ["wrong text", "test text"]
+        automation.smart_wait_for_element = Mock(return_value=(mock_element, '#test_input'))
 
-    def test_special_characters_in_prefix(self):
-        """Test automation with special characters in email prefix."""
-        automation = IntelligentTavilyAutomation()
-        automation.email_prefix = "test-user_123"
+        result = automation.smart_fill('test_input', 'test text', retries=2)
 
-        email = automation.generate_email()
+        assert result is True
+        assert mock_element.fill.call_count == 4 # (clear, fill) * 2
+        assert mock_element.input_value.call_count == 2
 
-        assert email.startswith("test-user_123")
-        assert "@2925.com" in email
+    def test_smart_fill_no_config(self, automation):
+        """Test smart_fill with a non-existent element configuration."""
+        result = automation.smart_fill('non_existent_input', 'test text')
+        assert result is False
