@@ -12,10 +12,15 @@ from ..utils.helpers import generate_email, wait_with_message, save_api_key
 
 
 class TavilyAutomation:
-    def __init__(self) -> None:
-        self.playwright: Optional[Playwright] = None
-        self.browser: Optional[Browser] = None
-        self.page: Optional[Page] = None
+    def __init__(self, page: Optional[Page] = None) -> None:
+        self.page: Optional[Page] = page
+        self._own_browser: bool = page is None
+        if self._own_browser:
+            self.playwright: Optional[Playwright] = None
+            self.browser: Optional[Browser] = None
+        else:
+            self.playwright = None
+            self.browser = None
         self.email: Optional[str] = None
         self.password: str = DEFAULT_PASSWORD
         self.html_log: List[Dict[str, Any]] = []  # 用于记录HTML信息
@@ -23,6 +28,8 @@ class TavilyAutomation:
 
     def start_browser(self, headless: Optional[bool] = None) -> None:
         """启动浏览器"""
+        if not self._own_browser:
+            return
         self.playwright = sync_playwright().start()
 
         # 使用传入的headless参数，如果没有则使用配置文件的值
@@ -378,6 +385,8 @@ class TavilyAutomation:
 
     def close_browser(self) -> None:
         """关闭浏览器"""
+        if not self._own_browser:
+            return
         if self.page:
             self.page.close()
         if self.browser:

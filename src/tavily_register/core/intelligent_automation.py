@@ -18,20 +18,24 @@ class IntelligentTavilyAutomation:
     using Playwright for browser automation and robust element detection strategies.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, page: Optional[Page] = None) -> None:
         """
         Initialize the IntelligentTavilyAutomation instance.
 
-        Sets up default values, selector strategies, and configuration for browser automation.
+        Args:
+            page (Optional[Page]): An existing Playwright page object. If provided,
+                the instance will not manage its own browser lifecycle.
         """
+        self.page: Optional[Page] = page
+        self._own_browser: bool = page is None
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
-        self.page: Optional[Page] = None
+
         self.email: Optional[str] = None
         self.password: str = DEFAULT_PASSWORD
         self.debug: bool = True
-        self.email_prefix: Optional[str] = None  # 动态邮箱前缀
-        self.headless_mode: Optional[bool] = None  # 记住headless设置
+        self.email_prefix: Optional[str] = None
+        self.headless_mode: Optional[bool] = None
 
         # 基于深层分析的智能选择器配置
         self.selectors = {
@@ -110,6 +114,8 @@ class IntelligentTavilyAutomation:
             headless (Optional[bool]): Whether to run the browser in headless mode.
                 If None, uses the default HEADLESS setting.
         """
+        if not self._own_browser:
+            return
         self.playwright = sync_playwright().start()
         headless_mode = headless if headless is not None else HEADLESS
 
@@ -130,6 +136,8 @@ class IntelligentTavilyAutomation:
         """
         Close the current browser session and clean up resources.
         """
+        if not self._own_browser:
+            return
         try:
             if self.page:
                 self.page.close()
