@@ -8,6 +8,7 @@ import pytest
 import time
 from unittest.mock import Mock, patch
 from concurrent.futures import ThreadPoolExecutor
+from playwright.sync_api import Page
 
 from src.tavily_register.utils.helpers import generate_email, save_api_key
 from src.tavily_register.config import settings
@@ -56,27 +57,26 @@ class TestPerformanceBenchmarks:
         result = benchmark(load_config_multiple_times)
         assert len(result) == 50
 
-    @patch('src.tavily_register.email.checker.requests.get')
-    def test_email_checking_performance(self, mock_get, benchmark):
+    def test_email_checking_performance(self, benchmark):
         """Benchmark email checking performance."""
-        # Mock successful email check response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"email": "test@2925.com", "status": "success"}
-        mock_get.return_value = mock_response
+        # Mock the Page object
+        mock_page = Mock(spec=Page)
 
-        checker = EmailChecker()
+        # Mock the EmailChecker and its methods
+        checker = EmailChecker(page=mock_page)
+        checker.find_emails_on_page = Mock(return_value=[
+            {'text': 'To: test@2925.com\nFrom: noreply@tavily.com\nhttps://app.tavily.com/verify?token=abc123',
+             'is_unread': True, 'element': Mock(), 'index': 0}
+        ])
+        checker.process_email_with_alias_check = Mock(return_value="https://app.tavily.com/verify?token=abc123")
+        checker.refresh_email_list = Mock()
 
-        def check_multiple_emails():
-            results = []
-            for i in range(20):
-                email = f"test{i}@2925.com"
-                result = checker.check_email(email)
-                results.append(result)
-            return results
+        def check_emails():
+            # Benchmark the check_for_tavily_email method
+            checker.check_for_tavily_email("test@2925.com", max_retries=1)
 
-        result = benchmark(check_multiple_emails)
-        assert len(result) == 20
+        # Run the benchmark
+        benchmark(check_emails)
 
     def test_concurrent_email_generation_performance(self, benchmark):
         """Benchmark concurrent email generation."""

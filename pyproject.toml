@@ -63,6 +63,7 @@ test = [
     "pytest-cov>=4.0.0",
     "pytest-mock>=3.10.0",
     "pytest-playwright>=0.4.0",
+    "pytest-benchmark>=3.4.1",
 ]
 security = [
     "bandit[toml]>=1.7.0",
@@ -146,6 +147,7 @@ markers = [
     "unit: marks tests as unit tests",
     "performance: marks tests as performance benchmarks",
 ]
+anyio_mode = "auto"
 
 [tool.coverage.run]
 source = ["src"]

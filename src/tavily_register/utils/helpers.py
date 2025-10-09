@@ -9,6 +9,7 @@ import string
 import time
 import json
 from datetime import datetime
+from functools import lru_cache
 from typing import Optional, Any, List, Dict, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -129,6 +130,7 @@ def save_cookies(cookies: List[Dict[str, Any]], filename: str) -> bool:
         return False
 
 
+@lru_cache(maxsize=None)
 def load_cookies(filename: str) -> Optional[List[Dict[str, Any]]]:
     """
     Load cookies from a file with validation and expiry checking.

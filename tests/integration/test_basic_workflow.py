@@ -120,28 +120,25 @@ class TestBasicWorkflow:
             assert settings.HEADLESS is True
             assert settings.WAIT_TIME_SHORT == 1
 
-    @patch('playwright.sync_api.sync_playwright')
+    @patch('src.tavily_register.core.intelligent_automation.sync_playwright')
     def test_browser_lifecycle_workflow(self, mock_playwright):
         """Test browser lifecycle management."""
         # Setup mocks
-        mock_playwright_instance = Mock()
+        mock_playwright_context = mock_playwright.return_value.__enter__.return_value
         mock_browser = Mock()
         mock_page = Mock()
-        
-        mock_playwright.return_value.start.return_value = mock_playwright_instance
-        mock_playwright_instance.firefox.launch.return_value = mock_browser
+
+        mock_playwright_context.chromium.launch.return_value = mock_browser
         mock_browser.new_page.return_value = mock_page
-        
+
         automation = IntelligentTavilyAutomation()
-        
+
         # Test browser startup
         automation.start_browser(headless=True)
-        
+
         # Verify browser was launched with correct options
-        mock_playwright_instance.firefox.launch.assert_called_once()
-        call_args = mock_playwright_instance.firefox.launch.call_args
-        assert call_args[1]['headless'] is True
-        
+        mock_playwright_context.chromium.launch.assert_called_once_with(headless=True)
+
         # Test browser cleanup
         automation.close_browser()
         mock_browser.close.assert_called_once()

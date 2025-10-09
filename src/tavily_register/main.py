@@ -9,6 +9,7 @@ import base64
 import time
 import os
 from typing import Optional, Tuple
+from playwright.sync_api import sync_playwright
 from .core.intelligent_automation import IntelligentTavilyAutomation
 from .core.traditional_automation import TavilyAutomation
 from .email.login_helper import EmailLoginHelper
@@ -24,22 +25,9 @@ class TavilyMainController:
     def get_email_prefix_from_cookies(self) -> Optional[str]:
         """从cookies中获取邮箱前缀"""
         try:
-            if not os.path.exists(self.cookie_file):
-                print("⚠️ 未找到邮箱cookies文件")
-                return None
-
-            with open(self.cookie_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-
-            # 处理新格式和旧格式的cookies
-            if isinstance(data, list):
-                # 旧格式 - 直接是cookie列表
-                cookies = data
-            elif isinstance(data, dict) and 'cookies' in data:
-                # 新格式 - 包含metadata的格式
-                cookies = data['cookies']
-            else:
-                print("❌ 无效的cookies文件格式")
+            cookies = load_cookies(self.cookie_file)
+            if not cookies:
+                print("⚠️ 未能从文件中加载cookies，文件可能不存在、为空或格式无效。")
                 return None
 
             # 查找包含用户信息的JWT token
@@ -89,48 +77,23 @@ class TavilyMainController:
         print("=" * 40)
         print("请在打开的浏览器中登录您的邮箱账户")
         print("登录成功后，程序将自动获取您的邮箱前缀")
-
-        email_helper = EmailLoginHelper()
-
         try:
-            email_helper.start_browser()
-
-            # 访问邮箱网站
-            if not email_helper.page:
-                print("❌ 页面未初始化")
-                return False
-
-            email_helper.page.goto(EMAIL_CHECK_URL)
-            wait_with_message(2, "等待页面加载")
-
-            # 引导用户手动登录并保存cookies
-            if email_helper.manual_login_guide():
-                print("✅ Cookies保存成功")
-
-                # 测试保存的cookies是否有效
-                if email_helper.test_saved_cookies():
-                    print("✅ Cookies测试成功")
-
-                    # 尝试获取邮箱前缀
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=False)
+                page = browser.new_page()
+                try:
+                    email_helper = EmailLoginHelper(page)
+                    email_helper.interactive_email_setup()
                     self.email_prefix = self.get_email_prefix_from_cookies()
-                    if self.email_prefix:
-                        print(f"✅ 邮箱前缀设置为: {self.email_prefix}")
-                        return True
-                    else:
-                        print("⚠️ 无法获取邮箱前缀，请重新登录")
-                        return False
-                else:
-                    print("⚠️ Cookies测试失败，但已保存")
-                    return True  # 即使测试失败，cookies已保存，可以继续
-            else:
-                print("❌ Cookies保存失败")
-                return False
-
+                    return True
+                except Exception as e:
+                    print(f"❌ Cookie获取失败: {e}")
+                    return False
+                finally:
+                    browser.close()
         except Exception as e:
-            print(f"❌ Cookie获取失败: {e}")
+            print(f"❌ Playwright 初始化失败: {e}")
             return False
-        finally:
-            email_helper.close_browser()
 
     def show_main_menu(self) -> str:
         """显示主菜单"""
@@ -226,45 +189,38 @@ class TavilyMainController:
 
         # 执行智能自动化
         success_count = 0
-
-        for i in range(count):
-            print(f"\n{'='*60}")
-            print(f"🔄 智能注册第 {i+1}/{count} 个账户")
-            print(f"{'='*60}")
-            automation: Optional[IntelligentTavilyAutomation] = None
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless)
             try:
-                automation = IntelligentTavilyAutomation()
-
-                # 设置邮箱前缀
-                automation.email_prefix = self.email_prefix
-
-                automation.start_browser(headless=headless)
-
-                start_time = time.time()
-                api_key = automation.run_complete_automation()
-                elapsed_time = time.time() - start_time
-
-                if api_key:
-                    print(f"🎉 第 {i+1} 个账户注册成功!")
-                    print(f"⏱️  耗时: {elapsed_time:.1f} 秒")
-                    print(f"📧 邮箱: {automation.email}")
-                    print(f"🔑 API Key: {api_key}")
-                    success_count += 1
-                else:
-                    print(f"❌ 第 {i+1} 个账户注册失败")
-
-            except Exception as e:
-                print(f"❌ 第 {i+1} 个账户注册出错: {e}")
-            finally:
-                # 确保浏览器被关闭
-                if automation:
+                for i in range(count):
+                    print(f"\n{'='*60}")
+                    print(f"🔄 智能注册第 {i+1}/{count} 个账户")
+                    print(f"{'='*60}")
+                    context = browser.new_context()
+                    page = context.new_page()
                     try:
-                        automation.close_browser()
-                    except Exception:
-                        # 浏览器可能已经关闭，忽略错误
-                        pass
-                continue
+                        automation = IntelligentTavilyAutomation(page)
+                        automation.email_prefix = self.email_prefix
 
+                        start_time = time.time()
+                        api_key = automation.run_complete_automation()
+                        elapsed_time = time.time() - start_time
+
+                        if api_key:
+                            print(f"🎉 第 {i+1} 个账户注册成功!")
+                            print(f"⏱️  耗时: {elapsed_time:.1f} 秒")
+                            print(f"📧 邮箱: {automation.email}")
+                            print(f"🔑 API Key: {api_key}")
+                            success_count += 1
+                        else:
+                            print(f"❌ 第 {i+1} 个账户注册失败")
+
+                    except Exception as e:
+                        print(f"❌ 第 {i+1} 个账户注册出错: {e}")
+                    finally:
+                        context.close()
+            finally:
+                browser.close()
         # 显示结果
         print(f"\n{'='*60}")
         print(f"🎉 智能自动化完成!")
@@ -300,48 +256,42 @@ class TavilyMainController:
 
         # 执行测试模式
         success_count = 0
-
-        for i in range(count):
-            print(f"\n{'='*60}")
-            print(f"🔍 测试第 {i+1}/{count} 个账户 (传统模式)")
-            print(f"{'='*60}")
-            automation: Optional[TavilyAutomation] = None
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless)
             try:
-                automation = TavilyAutomation()
-
-                # 设置邮箱前缀
-                automation.email_prefix = self.email_prefix
-
-                automation.start_browser(headless=headless)
-
-                start_time = time.time()
-
-                # 运行传统注册流程
-                if automation.run_registration():
-                    print("✅ 传统注册流程完成")
-
-                    # 保存HTML日志
-                    automation.save_html_log(f"test_mode_log_{i+1}.json")
-                    print(f"📋 HTML信息已保存到 test_mode_log_{i+1}.json")
-
-                    success_count += 1
-                else:
-                    print("❌ 传统注册流程失败")
-
-                elapsed_time = time.time() - start_time
-                print(f"⏱️  传统模式耗时: {elapsed_time:.1f} 秒")
-
-            except Exception as e:
-                print(f"❌ 测试第 {i+1} 个账户出错: {e}")
-            finally:
-                # 确保浏览器被关闭
-                if automation:
+                for i in range(count):
+                    print(f"\n{'='*60}")
+                    print(f"🔍 测试第 {i+1}/{count} 个账户 (传统模式)")
+                    print(f"{'='*60}")
+                    context = browser.new_context()
+                    page = context.new_page()
                     try:
-                        automation.close_browser()
-                    except Exception:
-                        # 浏览器可能已经关闭，忽略错误
-                        pass
-                continue
+                        automation = TavilyAutomation(page)
+                        automation.email_prefix = self.email_prefix
+
+                        start_time = time.time()
+
+                        # 运行传统注册流程
+                        if automation.run_registration():
+                            print("✅ 传统注册流程完成")
+
+                            # 保存HTML日志
+                            automation.save_html_log(f"test_mode_log_{i+1}.json")
+                            print(f"📋 HTML信息已保存到 test_mode_log_{i+1}.json")
+
+                            success_count += 1
+                        else:
+                            print("❌ 传统注册流程失败")
+
+                        elapsed_time = time.time() - start_time
+                        print(f"⏱️  传统模式耗时: {elapsed_time:.1f} 秒")
+
+                    except Exception as e:
+                        print(f"❌ 测试第 {i+1} 个账户出错: {e}")
+                    finally:
+                        context.close()
+            finally:
+                browser.close()
 
         # 显示结果
         print(f"\n{'='*60}")

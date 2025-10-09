@@ -7,6 +7,7 @@ file operations, and logging utilities.
 import os
 import json
 import tempfile
+import time
 import pytest
 from unittest.mock import patch, mock_open
 from datetime import datetime
@@ -150,21 +151,28 @@ class TestFileOperations:
             tmp_path = tmp.name
 
         try:
-            save_cookies(test_cookies, tmp_path)
+            assert save_cookies(test_cookies, tmp_path) is True
             
             with open(tmp_path, 'r') as f:
-                loaded_cookies = json.load(f)
+                loaded_data = json.load(f)
             
-            assert loaded_cookies == test_cookies
+            assert "cookies" in loaded_data
+            assert loaded_data["cookies"] == test_cookies
+            assert "timestamp" in loaded_data
         finally:
             os.unlink(tmp_path)
 
     def test_load_cookies_existing_file(self):
         """Test loading cookies from existing file."""
         test_cookies = [{"name": "test", "value": "value"}]
+        cookie_data = {
+            "timestamp": time.time(),
+            "count": len(test_cookies),
+            "cookies": test_cookies
+        }
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as tmp:
-            json.dump(test_cookies, tmp)
+            json.dump(cookie_data, tmp)
             tmp_path = tmp.name
 
         try:
@@ -239,7 +247,7 @@ class TestIntegration:
             api_file = os.path.join(tmp_dir, "api_keys.md")
 
             # Save cookies
-            save_cookies(test_cookies, cookie_file)
+            assert save_cookies(test_cookies, cookie_file) is True
             assert os.path.exists(cookie_file)
 
             # Load cookies
@@ -343,14 +351,14 @@ class TestEdgeCases:
             tmp_path = tmp.name
 
         try:
-            save_cookies([], tmp_path)
-
-            with open(tmp_path, 'r') as f:
-                loaded_cookies = json.load(f)
-
-            assert loaded_cookies == []
+            assert save_cookies([], tmp_path) is False
+            # Ensure the file is empty if it was created
+            if os.path.exists(tmp_path):
+                with open(tmp_path, 'r') as f:
+                    assert f.read() == ""
         finally:
-            os.unlink(tmp_path)
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
     def test_save_cookies_with_complex_data(self):
         """Test saving cookies with complex nested data."""
@@ -367,8 +375,7 @@ class TestEdgeCases:
             tmp_path = tmp.name
 
         try:
-            save_cookies(complex_cookies, tmp_path)
-
+            assert save_cookies(complex_cookies, tmp_path) is True
             loaded_cookies = load_cookies(tmp_path)
             assert loaded_cookies == complex_cookies
         finally:
@@ -394,8 +401,8 @@ class TestErrorHandling:
         """Test saving cookies when file permissions are denied."""
         invalid_path = "/nonexistent/directory/cookies.json"
 
-        with pytest.raises((PermissionError, FileNotFoundError)):
-            save_cookies([{"name": "test"}], invalid_path)
+        # The function now handles the exception and returns False
+        assert save_cookies([{"name": "test", "value": "value"}], invalid_path) is False
 
     def test_load_cookies_permission_denied(self):
         """Test loading cookies when file permissions are denied."""

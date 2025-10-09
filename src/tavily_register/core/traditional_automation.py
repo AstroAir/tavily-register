@@ -6,59 +6,18 @@ Traditional automation approach for Tavily registration.
 import json
 import time
 from typing import Any, Optional, Dict, List, cast
-from playwright.sync_api import sync_playwright, Playwright, Browser, Page
+from playwright.sync_api import Page
 from ..config.settings import *
 from ..utils.helpers import generate_email, wait_with_message, save_api_key
 
 
 class TavilyAutomation:
-    def __init__(self, page: Optional[Page] = None) -> None:
-        self.page: Optional[Page] = page
-        self._own_browser: bool = page is None
-        if self._own_browser:
-            self.playwright: Optional[Playwright] = None
-            self.browser: Optional[Browser] = None
-        else:
-            self.playwright = None
-            self.browser = None
+    def __init__(self, page: Page) -> None:
+        self.page: Page = page
         self.email: Optional[str] = None
         self.password: str = DEFAULT_PASSWORD
         self.html_log: List[Dict[str, Any]] = []  # 用于记录HTML信息
         self.email_prefix: Optional[str] = None  # 动态邮箱前缀
-
-    def start_browser(self, headless: Optional[bool] = None) -> None:
-        """启动浏览器"""
-        if not self._own_browser:
-            return
-        self.playwright = sync_playwright().start()
-
-        # 使用传入的headless参数，如果没有则使用配置文件的值
-        headless_mode = headless if headless is not None else HEADLESS
-
-        # 根据配置选择浏览器类型
-        if BROWSER_TYPE == "firefox":
-            self.browser = self.playwright.firefox.launch(
-                headless=headless_mode)
-        elif BROWSER_TYPE == "webkit":
-            self.browser = self.playwright.webkit.launch(
-                headless=headless_mode)
-        else:  # chromium
-            # 配置浏览器启动参数，解决macOS上的兼容性问题
-            browser_args = [
-                '--no-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--disable-web-security',
-                '--disable-features=VizDisplayCompositor'
-            ]
-            self.browser = self.playwright.chromium.launch(
-                headless=headless_mode,
-                args=browser_args
-            )
-
-        if self.browser:
-            self.page = self.browser.new_page()
-            self.page.set_default_timeout(BROWSER_TIMEOUT)
 
     def collect_element_info(self, element: Any, action_type: str, element_name: str) -> None:
         """收集元素的深层HTML信息"""
@@ -383,24 +342,10 @@ class TavilyAutomation:
         except Exception as e:
             print(f"❌ 保存HTML信息失败: {e}")
 
-    def close_browser(self) -> None:
-        """关闭浏览器"""
-        if not self._own_browser:
-            return
-        if self.page:
-            self.page.close()
-        if self.browser:
-            self.browser.close()
-        if self.playwright:
-            self.playwright.stop()
-
     def navigate_to_signup(self) -> bool:
         """导航到注册页面"""
         try:
             print("🌐 正在访问Tavily主页...")
-            if not self.page:
-                print("❌ 页面未初始化")
-                return False
             self.page.goto(TAVILY_HOME_URL)
             wait_with_message(WAIT_TIME_MEDIUM, "等待页面加载")
 
@@ -450,10 +395,6 @@ class TavilyAutomation:
             # 生成随机邮箱（使用动态前缀）
             self.email = generate_email(self.email_prefix)
             print(f"📧 生成的注册邮箱: {self.email}")
-
-            if not self.page:
-                print("❌ 页面未初始化")
-                return False
 
             # 查找邮箱输入框
             email_selectors = [
@@ -527,10 +468,6 @@ class TavilyAutomation:
         """填写密码"""
         try:
             print("🔐 正在填写密码...")
-
-            if not self.page:
-                print("❌ 页面未初始化")
-                return False
 
             # 查找密码输入框
             password_selectors = [
@@ -653,9 +590,6 @@ class TavilyAutomation:
         """验证邮箱"""
         try:
             print(f"🔗 正在访问验证链接...")
-            if not self.page:
-                print("❌ 页面未初始化")
-                return False
             self.page.goto(verification_link)
             wait_with_message(WAIT_TIME_LONG, "等待邮箱验证完成")
 
@@ -688,10 +622,6 @@ class TavilyAutomation:
         """获取API key"""
         try:
             print("🔑 正在查找API key...")
-
-            if not self.page:
-                print("❌ 页面未初始化")
-                return None
 
             # 等待页面完全加载
             wait_with_message(WAIT_TIME_MEDIUM, "等待页面加载")
@@ -751,9 +681,8 @@ class TavilyAutomation:
             else:
                 print("⚠️ 未找到API key，可能需要手动查找")
                 # 截图保存当前页面状态
-                if self.page:
-                    self.page.screenshot(path="api_key_page.png")
-                    print("📸 已截图保存当前页面: api_key_page.png")
+                self.page.screenshot(path="api_key_page.png")
+                print("📸 已截图保存当前页面: api_key_page.png")
                 return None
 
         except Exception as e:

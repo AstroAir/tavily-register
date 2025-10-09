@@ -6,60 +6,20 @@ Specialized tool for checking verification emails in 2925.com mailbox.
 """
 import re
 import time
-from typing import Optional, List, Dict, Any, Sequence
-from playwright.sync_api import sync_playwright, Page, Browser, Playwright
-from playwright._impl._api_structures import SetCookieParam
+from typing import Optional, List, Dict, Any
+from playwright.sync_api import Page, Dialog
 from ..config.settings import *
 from ..utils.helpers import load_cookies, wait_with_message, convert_cookies_to_playwright_format
 
 
 class EmailChecker:
-    def __init__(self, page: Optional[Page] = None) -> None:
-        self.page: Optional[Page] = page
-        self._own_browser: bool = page is None
-        if self._own_browser:
-            self.playwright: Optional[Playwright] = None
-            self.browser: Optional[Browser] = None
-        else:
-            self.playwright = None
-            self.browser = None
-
-    def start_browser(self, headless: Optional[bool] = None) -> None:
-        """启动浏览器"""
-        if not self._own_browser:
-            return
-        self.playwright = sync_playwright().start()
-
-        # 使用传入的headless参数，如果没有则使用配置文件默认值
-        headless_mode = headless if headless is not None else HEADLESS
-
-        # 根据配置选择浏览器类型
-        if BROWSER_TYPE == "firefox":
-            self.browser = self.playwright.firefox.launch(
-                headless=headless_mode)
-        elif BROWSER_TYPE == "webkit":
-            self.browser = self.playwright.webkit.launch(
-                headless=headless_mode)
-        else:  # chromium
-            browser_args = [
-                '--no-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--disable-web-security',
-                '--disable-features=VizDisplayCompositor'
-            ]
-            self.browser = self.playwright.chromium.launch(
-                headless=headless_mode,
-                args=browser_args
-            )
-
-        self.page = self.browser.new_page()
+    def __init__(self, page: Page) -> None:
+        self.page: Page = page
         self.page.set_default_timeout(BROWSER_TIMEOUT)
-
         # 设置弹窗处理
         self.page.on("dialog", self.handle_dialog)
 
-    def handle_dialog(self, dialog: Any) -> None:
+    def handle_dialog(self, dialog: Dialog) -> None:
         """处理弹窗"""
         try:
             print(f"🔔 检测到弹窗: {dialog.message}")
@@ -76,29 +36,11 @@ class EmailChecker:
             except:
                 pass
 
-    def close_browser(self) -> None:
-        """关闭浏览器"""
-        if not self._own_browser:
-            return
-        if self.page:
-            self.page.close()
-        if self.browser:
-            self.browser.close()
-        if self.playwright:
-            self.playwright.stop()
-
     def load_email_page(self) -> bool:
         """加载邮箱页面"""
         try:
-            if not self.page:
-                print("❌ 页面未初始化")
-                return False
-
             # 先访问主域名
             print("🌐 访问主域名...")
-            if not self.page:
-                print("❌ 页面未初始化")
-                return False
             self.page.goto("https://www.2925.com")
             wait_with_message(1, "等待主域名加载")
 
@@ -158,9 +100,6 @@ class EmailChecker:
             wait_with_message(2, "等待邮件列表加载")
 
             # 查找邮件行
-            if not self.page:
-                print("❌ 页面未初始化")
-                return []
             email_rows = self.page.query_selector_all('tbody tr')
 
             if not email_rows:

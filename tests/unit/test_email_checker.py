@@ -27,65 +27,6 @@ class TestEmailCheckerInit:
         """Test EmailChecker instance initialization with a page object."""
         checker = EmailChecker(page=page)
         assert checker.page == page
-        assert checker._own_browser is False
-
-    def test_initialization_without_page(self):
-        """Test EmailChecker instance initialization without a page object."""
-        checker = EmailChecker()
-        assert checker.page is None
-        assert checker._own_browser is True
-        assert hasattr(checker, 'playwright')
-        assert hasattr(checker, 'browser')
-
-
-class TestBrowserLifecycle:
-    """Test browser lifecycle management for email checking."""
-
-    def test_start_browser_if_own_browser(self):
-        """Test that start_browser only runs if the checker owns the browser."""
-        with patch('src.tavily_register.email.checker.sync_playwright') as mock_playwright:
-            mock_playwright_instance = Mock()
-            mock_browser = Mock()
-            mock_page = Mock()
-            mock_playwright.return_value.start.return_value = mock_playwright_instance
-            mock_playwright_instance.firefox.launch.return_value = mock_browser
-            mock_browser.new_page.return_value = mock_page
-
-            checker = EmailChecker() # Owns browser
-            checker.start_browser()
-
-            mock_playwright_instance.firefox.launch.assert_called_once()
-            assert checker.page is not None
-
-    def test_start_browser_if_not_own_browser(self, page: Page):
-        """Test that start_browser does nothing if a page is provided."""
-        with patch('src.tavily_register.email.checker.sync_playwright') as mock_playwright:
-            checker = EmailChecker(page=page)
-            checker.start_browser()
-            mock_playwright.return_value.start.assert_not_called()
-
-    def test_close_browser_if_own_browser(self):
-        """Test that close_browser only runs if the checker owns the browser."""
-        with patch('src.tavily_register.email.checker.sync_playwright'):
-            checker = EmailChecker()
-            # mock the attributes that would be set by start_browser
-            checker.playwright = Mock()
-            checker.browser = Mock()
-            checker.page = Mock()
-
-            checker.close_browser()
-
-            checker.page.close.assert_called_once()
-            checker.browser.close.assert_called_once()
-            checker.playwright.stop.assert_called_once()
-
-    def test_close_browser_if_not_own_browser(self, page: Page):
-        """Test that close_browser does nothing if a page is provided."""
-        checker = EmailChecker(page=page)
-        # mock page.close() to check it's not called
-        page.close = Mock()
-        checker.close_browser()
-        page.close.assert_not_called()
 
 
 class TestCookieManagement:

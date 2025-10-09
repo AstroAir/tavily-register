@@ -5,8 +5,7 @@
 Specialized tool for logging into 2925.com email and saving cookies.
 """
 import json
-from typing import Optional
-from playwright.sync_api import sync_playwright, Playwright, Browser, Page
+from playwright.sync_api import Page, sync_playwright
 from ..config.settings import *
 from ..utils.helpers import load_cookies, save_cookies, wait_with_message, prepare_cookies_for_playwright
 
@@ -14,60 +13,14 @@ from ..utils.helpers import load_cookies, save_cookies, wait_with_message, prepa
 class EmailLoginHelper:
     """
     Helper class for logging into 2925.com email and managing cookies using Playwright.
-    Provides methods to start and close the browser, explore the email site,
-    guide manual login, test saved cookies, and run an interactive setup.
+    Provides methods to explore the email site, guide manual login, and run an interactive setup.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, page: Page) -> None:
         """
         Initialize the EmailLoginHelper instance.
-        Sets up placeholders for Playwright, Browser, and Page objects.
         """
-        self.playwright: Optional[Playwright] = None
-        self.browser: Optional[Browser] = None
-        self.page: Optional[Page] = None
-
-    def start_browser(self) -> None:
-        """
-        Start the Playwright browser according to the configuration.
-        Sets up the browser and opens a new page with default timeout.
-        """
-        self.playwright = sync_playwright().start()
-
-        # 根据配置选择浏览器类型
-        if BROWSER_TYPE == "firefox":
-            self.browser = self.playwright.firefox.launch(
-                headless=False)  # 强制显示浏览器
-        elif BROWSER_TYPE == "webkit":
-            self.browser = self.playwright.webkit.launch(headless=False)
-        else:  # chromium
-            browser_args = [
-                '--no-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--disable-web-security',
-                '--disable-features=VizDisplayCompositor'
-            ]
-            self.browser = self.playwright.chromium.launch(
-                headless=False,  # 强制显示浏览器
-                args=browser_args
-            )
-
-        if self.browser:
-            self.page = self.browser.new_page()
-            self.page.set_default_timeout(BROWSER_TIMEOUT)
-
-    def close_browser(self) -> None:
-        """
-        Close the browser and clean up Playwright resources.
-        Closes the page, browser, and stops Playwright if they are initialized.
-        """
-        if self.page:
-            self.page.close()
-        if self.browser:
-            self.browser.close()
-        if self.playwright:
-            self.playwright.stop()
+        self.page: Page = page
 
     def explore_email_site(self) -> bool:
         """
@@ -79,10 +32,6 @@ class EmailLoginHelper:
             bool: True if exploration succeeds, False otherwise.
         """
         try:
-            if not self.page:
-                print("❌ 页面未初始化")
-                return False
-
             print(f"🌐 正在访问邮箱网站: {EMAIL_CHECK_URL}")
             self.page.goto(EMAIL_CHECK_URL)
             wait_with_message(5, "等待页面加载")
@@ -145,10 +94,6 @@ class EmailLoginHelper:
         Returns:
             bool: True if cookies are saved successfully, False otherwise.
         """
-        if not self.page:
-            print("❌ 页面未初始化")
-            return False
-
         print("\n" + "="*60)
         print("📖 手动登录指导")
         print("="*60)
@@ -192,98 +137,10 @@ class EmailLoginHelper:
             print(f"❌ 获取cookies失败: {e}")
             return False
 
-    def test_saved_cookies(self) -> bool:
-        """
-        Test the saved cookies by applying them to a new browser page and visiting the email site.
-        Prints the result and page information.
-
-        Returns:
-            bool: True if cookies are loaded and tested successfully, False otherwise.
-        """
-        try:
-            print("\n🧪 测试已保存的cookies...")
-
-            # 加载cookies
-            cookies = load_cookies(COOKIES_FILE)
-            if not cookies:
-                print("❌ 没有找到已保存的cookies")
-                return False
-
-            print(f"📂 加载了 {len(cookies)} 个cookies")
-
-            # 打开新页面并应用cookies
-            if not self.browser:
-                print("❌ 浏览器未初始化")
-                return False
-            test_page = self.browser.new_page()
-
-            # 准备cookies格式以供Playwright使用
-            valid_cookies = prepare_cookies_for_playwright(cookies)
-
-            if valid_cookies:
-                try:
-                    # Convert dicts to the correct format for Playwright's add_cookies
-                    test_page.context.add_cookies([
-                        {
-                            "name": cookie["name"],
-                            "value": cookie["value"],
-                            "domain": cookie.get("domain", ""),
-                            "path": cookie.get("path", "/"),
-                            "expires": cookie.get("expires"),
-                            "httpOnly": cookie.get("httpOnly", False),
-                            "secure": cookie.get("secure", False),
-                            "sameSite": cookie.get("sameSite", "Lax"),
-                        }
-                        for cookie in valid_cookies
-                        if isinstance(cookie, dict) and "name" in cookie and "value" in cookie
-                    ])
-                    print(f"✅ 应用了 {len(valid_cookies)} 个有效cookies")
-                except Exception as e:
-                    print(f"⚠️ 应用cookies时出错: {e}")
-                    # 尝试使用原始cookies格式
-                    try:
-                        test_page.context.add_cookies([
-                            {
-                                "name": cookie["name"],
-                                "value": cookie["value"],
-                                "domain": cookie.get("domain", ""),
-                                "path": cookie.get("path", "/"),
-                                "expires": cookie.get("expires"),
-                                "httpOnly": cookie.get("httpOnly", False),
-                                "secure": cookie.get("secure", False),
-                                "sameSite": cookie.get("sameSite", "Lax"),
-                            }
-                            for cookie in cookies
-                            if isinstance(cookie, dict) and "name" in cookie and "value" in cookie
-                        ])
-                        print(f"✅ 使用原始格式应用了 {len(cookies)} 个cookies")
-                    except Exception as e2:
-                        print(f"❌ 无法应用cookies: {e2}")
-                        return False
-            else:
-                print("⚠️ 没有找到有效的cookies")
-
-            # 访问邮箱网站
-            test_page.goto(EMAIL_CHECK_URL)
-            wait_with_message(3, "等待页面加载")
-
-            print(f"✅ 测试页面标题: {test_page.title()}")
-            print(f"✅ 测试页面URL: {test_page.url}")
-
-            # 检查是否成功登录（这里需要根据实际网站调整）
-            # 可以查找特定的元素来判断是否已登录
-
-            test_page.close()
-            return True
-
-        except Exception as e:
-            print(f"❌ 测试cookies失败: {e}")
-            return False
-
     def interactive_email_setup(self) -> bool:
         """
         Run the interactive setup for 2925.com email.
-        Guides the user through exploring the site, manual login, and cookie testing.
+        Guides the user through exploring the site and manual login.
 
         Returns:
             bool: True if setup completes successfully, False otherwise.
@@ -301,21 +158,6 @@ class EmailLoginHelper:
         if not self.manual_login_guide():
             return False
 
-        # 步骤3: 测试cookies
-        print("\n📋 步骤3: 测试cookies...")
-        if not self.test_saved_cookies():
-            print("⚠️ cookies测试失败，自动跳转至邮箱登录页面进行登录...")
-            if not self.page:
-                if self.browser:
-                    self.page = self.browser.new_page()
-                else:
-                    print("无法跳转登录页面，因为浏览器未初始化")
-                    return False
-            self.page.goto(EMAIL_CHECK_URL)
-            wait_with_message(3, "等待页面加载")
-        else:
-            print("✅ cookies测试成功")
-
         print("\n🎉 邮箱设置完成!")
         print(f"💾 cookies已保存到: {COOKIES_FILE}")
         print("💡 现在可以运行主程序进行自动注册")
@@ -328,25 +170,27 @@ def main() -> None:
     Main function to run the EmailLoginHelper interactively.
     Starts the browser, runs the interactive setup, and handles user prompts for closing the browser.
     """
-    helper = EmailLoginHelper()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        page = browser.new_page()
+        helper = EmailLoginHelper(page)
 
-    try:
-        helper.start_browser()
-        helper.interactive_email_setup()
+        try:
+            helper.interactive_email_setup()
 
-        # 询问是否要保持浏览器打开
-        keep_open = input("\n是否保持浏览器打开以便进一步测试? (y/n): ").lower().strip()
-        if keep_open == 'y':
-            print("浏览器将保持打开状态，请手动关闭...")
-            input("按Enter键退出程序...")
+            # 询问是否要保持浏览器打开
+            keep_open = input("\n是否保持浏览器打开以便进一步测试? (y/n): ").lower().strip()
+            if keep_open == 'y':
+                print("浏览器将保持打开状态，请手动关闭...")
+                input("按Enter键退出程序...")
 
-    except KeyboardInterrupt:
-        print("\n⚠️ 用户中断了程序")
-    except Exception as e:
-        print(f"\n❌ 程序出错: {e}")
-    finally:
-        if input("\n是否关闭浏览器? (y/n): ").lower().strip() != 'n':
-            helper.close_browser()
+        except KeyboardInterrupt:
+            print("\n⚠️ 用户中断了程序")
+        except Exception as e:
+            print(f"\n❌ 程序出错: {e}")
+        finally:
+            if input("\n是否关闭浏览器? (y/n): ").lower().strip() != 'n':
+                browser.close()
 
 
 if __name__ == "__main__":
